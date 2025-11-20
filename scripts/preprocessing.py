@@ -39,11 +39,6 @@ new_df = new_df.reset_index(names='date')
 sales_df = pd.read_csv('../data/raw/processed_sales.csv')
 sales_df['date'] = pd.to_datetime(sales_df['date']).dt.date
 new_df = pd.merge(new_df, sales_df[['date', 'cups_sold']], on='date', how='left')
-
-# Move cups_sold next to date (optional, for nicer column order)
-new_df.insert(1, 'cups_sold', new_df.pop('cups_sold'))
-
-# Optional: fill missing cups_sold with 0 (uncomment if needed)
-new_df['cups_sold'] = new_df['cups_sold'].fillna(0).astype(int)
+new_df = new_df.dropna(subset=['cups_sold'])
 
 new_df.to_csv('../data/intermediate/merged_daily_weather_all.csv', index=False)
