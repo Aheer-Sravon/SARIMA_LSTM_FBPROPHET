@@ -25,3 +25,4 @@ print(metrics)
 # Future forecast example (no exogenous variables for Prophet)
 future_preds = model.forecast_future(n_steps=3, start_date='2025-02-08')
 print(future_preds)
+

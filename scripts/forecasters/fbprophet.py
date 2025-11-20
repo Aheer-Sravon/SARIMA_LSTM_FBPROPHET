@@ -10,6 +10,7 @@ warnings.filterwarnings("ignore", category=ValueWarning, module="statsmodels.tsa
 
 from pathlib import Path
 from typing import Optional, Tuple, List, Union, Dict, Any
+import matplotlib.pyplot as plt
 
 import pandas as pd
 import numpy as np
@@ -38,8 +39,8 @@ class ProphetForecaster:
         val_path: Union[str, Path],
         test_path: Union[str, Path],
         target_col: str = 'cups_sold',
-        seasonality_mode: str = 'multiplicative',
-        yearly_seasonality: bool = False,
+        seasonality_mode: str = 'additive',
+        yearly_seasonality: bool = True,
         weekly_seasonality: bool = True,
         daily_seasonality: bool = False
     ) -> None:
@@ -84,8 +85,9 @@ class ProphetForecaster:
         for df in [self.train_data, self.val_data, self.test_data]:
             df['date'] = pd.to_datetime(df['date'])
         
-        # Combine train and validation for model training
-        self.train_val_data = pd.concat([self.train_data, self.val_data]).reset_index(drop=True)
+        self.train_val_data = pd.concat([self.train_data, self.val_data], ignore_index=True)
+        self.train_val_data.sort_values('date', inplace=True)  # ← CRITICAL: Maintain temporal order
+        self.train_val_data.reset_index(drop=True, inplace=True)
     
     def prepare_prophet_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -106,7 +108,7 @@ class ProphetForecaster:
     def train(
         self,
         growth: str = 'linear',
-        changepoint_prior_scale: float = 0.05,
+        changepoint_prior_scale: float = 0.1, # was 0.05
         seasonality_prior_scale: float = 10.0,
         holidays_prior_scale: float = 10.0,
         interval_width: float = 0.80,
@@ -263,7 +265,7 @@ class ProphetForecaster:
         
         # Plot components
         fig = self.model.plot_components(forecast)
-        return fig
+        plt.show()
     
     def plot_forecast(self) -> None:
         """Plot the forecast with actual data."""
@@ -279,4 +281,4 @@ class ProphetForecaster:
         
         # Plot
         fig = self.model.plot(forecast)
-        return fig
+        plt.show()
