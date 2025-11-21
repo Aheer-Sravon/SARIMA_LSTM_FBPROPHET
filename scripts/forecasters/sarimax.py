@@ -308,29 +308,3 @@ class SARIMAXForecaster:
         if self.res is None:
             return "Model not yet trained"
         return str(self.res.summary())
-
-    def forecast_future(self, n_steps: int, start_date: str) -> pd.DataFrame:
-        """
-        Forecast future values.
-        
-        Args:
-            n_steps: Number of steps to forecast
-            start_date: Start date for forecast (format: 'YYYY-MM-DD')
-        
-        Returns:
-            DataFrame with forecasted values
-        """
-        if self.res is None:
-            raise ValueError("Model must be trained before forecasting")
-        
-        # Generate future dates
-        future_dates = pd.date_range(start=start_date, periods=n_steps, freq='D')
-        
-        # Make predictions
-        forecast = self.res.get_forecast(steps=n_steps)
-        predictions = forecast.predicted_mean.values
-        
-        return pd.DataFrame({
-            'date': future_dates,
-            'predicted_cups_sold': predictions
-        })

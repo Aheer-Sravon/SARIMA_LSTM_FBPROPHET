@@ -19,6 +19,6 @@ metrics = model.evaluate(predictions)
 print(metrics)
 
 # Future forecast example (provide exog_future with 'weekday_num' column)
-exog_future = pd.DataFrame({'weekday_num': [0, 1, 2]})  # Example for 3 days
+exog_future = pd.DataFrame({'weekday_num': [5, 6, 0]})  # Sat (5), Sun (6), Mon (0) for 2025-02-08 to 10
 future_preds = model.forecast_future(n_steps=3, start_date='2025-02-08', exog_future=exog_future)
 print(future_preds)

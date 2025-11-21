@@ -312,7 +312,7 @@ class CNNLSTMForecaster:
         optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='min', factor=reduce_lr_factor,
-            patience=reduce_lr_patience, min_lr=min_lr, verbose=verbose
+            patience=reduce_lr_patience, min_lr=min_lr
         )
         
         # Training history
@@ -469,7 +469,13 @@ class CNNLSTMForecaster:
         
         mae = mean_absolute_error(actual, predictions)
         rmse = np.sqrt(mean_squared_error(actual, predictions))
-        mape = np.mean(np.abs((actual - predictions) / actual)) * 100 if np.all(actual != 0) else float('nan')
+        non_zero_mask = actual != 0
+        if np.any(non_zero_mask):
+            mape = np.mean(
+                np.abs((actual[non_zero_mask] - predictions[non_zero_mask]) / actual[non_zero_mask])
+            ) * 100
+        else:
+            mape = 0.0  # Or float('nan') if preferred; 0.0 assumes all zeros mean perfect relative match
         
         return {
             'MAE': mae,
