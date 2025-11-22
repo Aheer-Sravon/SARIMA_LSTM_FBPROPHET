@@ -70,106 +70,68 @@ class ProphetForecaster:
         self.val_data: Optional[pd.DataFrame] = None
         self.test_data: Optional[pd.DataFrame] = None
         self.train_val_data: Optional[pd.DataFrame] = None
-        
         self.model: Optional[Prophet] = None
+        self.residuals: Optional[np.ndarray] = None  # For diagnostics
         
         self.load_data()
     
     def load_data(self) -> None:
-        """Load and preprocess training, validation, and test data."""
+        """Load and preprocess data."""
         self.train_data = pd.read_csv(self.train_path)
         self.val_data = pd.read_csv(self.val_path)
         self.test_data = pd.read_csv(self.test_path)
         
-        # Parse date column
+        # Parse dates
         for df in [self.train_data, self.val_data, self.test_data]:
             df['date'] = pd.to_datetime(df['date'])
+            df.set_index('date', inplace=True)
         
-        self.train_val_data = pd.concat([self.train_data, self.val_data], ignore_index=True)
-        self.train_val_data.sort_values('date', inplace=True)  # ← CRITICAL: Maintain temporal order
-        self.train_val_data.reset_index(drop=True, inplace=True)
+        # Combine train and val for fitting
+        self.train_val_data = pd.concat([self.train_data, self.val_data])
     
     def prepare_prophet_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Prepare data in Prophet format (ds, y columns).
-        
-        Args:
-            df: Input dataframe
-        
-        Returns:
-            DataFrame with 'ds' (datestamp) and 'y' (value) columns
-        """
-        prophet_df = pd.DataFrame({
-            'ds': df['date'],
-            'y': df[self.target_col]
-        })
-        return prophet_df
+        """Prepare data for Prophet (ds, y columns)."""
+        prophet_df = df.reset_index().rename(columns={'date': 'ds', self.target_col: 'y'})
+        return prophet_df[['ds', 'y']]
     
     def train(
         self,
         growth: str = 'linear',
-        changepoint_prior_scale: float = 0.1, # was 0.05
+        changepoint_prior_scale: float = 0.05,
         seasonality_prior_scale: float = 10.0,
-        holidays_prior_scale: float = 10.0,
-        interval_width: float = 0.80,
         verbose: bool = False
     ) -> None:
-        """
-        Train the Prophet model.
-        
-        Args:
-            growth: 'linear' or 'logistic'
-            changepoint_prior_scale: Controls flexibility of trend (higher = more flexible)
-            seasonality_prior_scale: Controls flexibility of seasonality (higher = more flexible)
-            holidays_prior_scale: Controls flexibility of holidays
-            interval_width: Width of uncertainty intervals (0.8 = 80%)
-            verbose: Whether to print training progress
-        """
-        # Initialize model
+        """Train the Prophet model on combined train+val data."""
+        import logging
+        logging.getLogger('prophet').setLevel(logging.INFO if verbose else logging.WARNING)
+        logging.getLogger('cmdstanpy').setLevel(logging.INFO if verbose else logging.WARNING)  # Also for backend
+
         self.model = Prophet(
             growth=growth,
+            changepoint_prior_scale=changepoint_prior_scale,
             seasonality_mode=self.seasonality_mode,
+            seasonality_prior_scale=seasonality_prior_scale,
             yearly_seasonality=self.yearly_seasonality,
             weekly_seasonality=self.weekly_seasonality,
-            daily_seasonality=self.daily_seasonality,
-            changepoint_prior_scale=changepoint_prior_scale,
-            seasonality_prior_scale=seasonality_prior_scale,
-            holidays_prior_scale=holidays_prior_scale,
-            interval_width=interval_width
+            daily_seasonality=self.daily_seasonality
         )
         
-        # Prepare training data
         train_prophet = self.prepare_prophet_data(self.train_val_data)
+        self.model.fit(train_prophet)  # No verbose here
         
-        # Suppress logs if not verbose
-        if not verbose:
-            import logging
-            logging.getLogger('prophet').setLevel(logging.WARNING)
-        
-        # Fit model
-        self.model.fit(train_prophet)
-        
-        if verbose:
-            print("Prophet model trained successfully!")
+        # Compute residuals for diagnostics
+        forecast = self.model.predict(train_prophet)
+        actual = train_prophet['y'].values
+        self.residuals = actual - forecast['yhat'].values
     
     def predict(self) -> np.ndarray:
-        """
-        Generate predictions for test set.
-        
-        Returns:
-            Array of predictions for test period
-        """
+        """Generate predictions on test set."""
         if self.model is None:
-            raise ValueError("Model must be trained before making predictions")
+            raise ValueError("Model must be trained before predicting")
         
-        # Prepare test data
         test_prophet = self.prepare_prophet_data(self.test_data)
-        
-        # Make predictions
         forecast = self.model.predict(test_prophet)
-        predictions = forecast['yhat'].values
-        
-        return predictions
+        return forecast['yhat'].values
     
     def forecast_future(self, n_steps: int, start_date: str) -> pd.DataFrame:
         """
@@ -180,16 +142,13 @@ class ProphetForecaster:
             start_date: Start date for forecast (format: 'YYYY-MM-DD')
         
         Returns:
-            DataFrame with forecasted values and confidence intervals
+            DataFrame with forecasted values, including uncertainty bounds
         """
         if self.model is None:
             raise ValueError("Model must be trained before forecasting")
         
-        # Create future dataframe
         future_dates = pd.date_range(start=start_date, periods=n_steps, freq='D')
         future = pd.DataFrame({'ds': future_dates})
-        
-        # Make predictions
         forecast = self.model.predict(future)
         
         return pd.DataFrame({
@@ -212,7 +171,7 @@ class ProphetForecaster:
         if predictions is None:
             predictions = self.predict()
         
-        actual: np.ndarray = self.test_data[self.target_col].values
+        actual = self.test_data[self.target_col].values
         
         mae: float = mean_absolute_error(actual, predictions)
         rmse: float = np.sqrt(mean_squared_error(actual, predictions))
@@ -254,7 +213,7 @@ class ProphetForecaster:
         
         return predictions, metrics
     
-    def plot_components(self) -> None:
+    def plot_components(self, save_path: Optional[str] = None) -> None:
         """Plot the forecast components (trend, seasonality, etc.)."""
         if self.model is None:
             raise ValueError("Model must be trained before plotting")
@@ -265,9 +224,12 @@ class ProphetForecaster:
         
         # Plot components
         fig = self.model.plot_components(forecast)
+        if save_path:
+            plt.savefig(save_path)
+            print(f"Components plot saved to {save_path}")
         plt.show()
     
-    def plot_forecast(self) -> None:
+    def plot_forecast(self, save_path: Optional[str] = None) -> None:
         """Plot the forecast with actual data."""
         if self.model is None:
             raise ValueError("Model must be trained before plotting")
@@ -281,4 +243,67 @@ class ProphetForecaster:
         
         # Plot
         fig = self.model.plot(forecast)
+        if save_path:
+            plt.savefig(save_path)
+            print(f"Forecast plot saved to {save_path}")
+        plt.show()
+    
+    def plot_diagnostics(self, save_path: Optional[str] = None):
+        """Plot model diagnostics (residuals histogram)."""
+        if self.residuals is None:
+            raise ValueError("Model must be trained before plotting diagnostics")
+        
+        plt.figure(figsize=(12, 6))
+        plt.hist(self.residuals, bins=30, color='blue', alpha=0.7)
+        plt.xlabel('Residuals')
+        plt.ylabel('Frequency')
+        plt.title('Residuals Histogram (Prophet)')
+        plt.grid(True)
+        
+        if save_path:
+            plt.savefig(save_path)
+            print(f"Diagnostics plot saved to {save_path}")
+        
+        plt.show()
+
+    def plot_actual_vs_predicted(self, predictions: Optional[np.ndarray] = None, save_path: Optional[str] = None):
+        """Plot actual vs predicted values on the test set."""
+        if predictions is None:
+            predictions = self.predict()
+        test_dates = self.test_data.index
+        actual = self.test_data[self.target_col].values
+        
+        plt.figure(figsize=(12, 6))
+        plt.plot(test_dates, actual, label='Actual', color='blue')
+        plt.plot(test_dates, predictions, label='Predicted', color='orange')
+        plt.xlabel('Date')
+        plt.ylabel('Cups Sold')
+        plt.title('Actual vs Predicted Cups Sold (Prophet)')
+        plt.legend()
+        plt.grid(True)
+        
+        if save_path:
+            plt.savefig(save_path)
+            print(f"Actual vs Predicted plot saved to {save_path}")
+        
+        plt.show()
+
+    def plot_future_forecast(self, n_steps: int = 30, start_date: Optional[str] = None, save_path: Optional[str] = None):
+        """Plot future forecast with uncertainty."""
+        if start_date is None:
+            start_date = str(self.test_data.index[-1] + pd.Timedelta(days=1))
+        forecast_df = self.forecast_future(n_steps, start_date)
+        plt.figure(figsize=(12, 6))
+        plt.plot(forecast_df['date'], forecast_df['predicted_cups_sold'], label='Forecast', color='green')
+        plt.fill_between(forecast_df['date'], forecast_df['lower_bound'], forecast_df['upper_bound'], color='green', alpha=0.2, label='Uncertainty')
+        plt.xlabel('Date')
+        plt.ylabel('Predicted Cups Sold')
+        plt.title('Future Forecast (Prophet)')
+        plt.legend()
+        plt.grid(True)
+        
+        if save_path:
+            plt.savefig(save_path)
+            print(f"Future Forecast plot saved to {save_path}")
+        
         plt.show()

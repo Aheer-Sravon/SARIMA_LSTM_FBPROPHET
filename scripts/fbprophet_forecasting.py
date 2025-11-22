@@ -9,7 +9,7 @@ model = ProphetForecaster(
     test_path='../data/preprocessed/test.csv'
 )
 
-# Train with parameters (no optimize needed for Prophet)
+# Train the model (equivalent to optimize + train in SARIMAX)
 model.train(
     growth='linear',
     changepoint_prior_scale=0.05,
@@ -17,12 +17,30 @@ model.train(
     verbose=True
 )
 
+# Plot diagnostics after fitting
+model.plot_diagnostics(save_path='../figures/prophet_diagnostics_plot.png')
+
 predictions = model.predict()
 
 metrics = model.evaluate(predictions)
 print(metrics)
 
-# Future forecast example (no exogenous variables for Prophet)
-future_preds = model.forecast_future(n_steps=3, start_date='2025-02-08')
+# Plot actual vs predicted
+model.plot_actual_vs_predicted(
+    predictions,
+    save_path='../figures/prophet_actual_vs_predicted.png'
+)
+
+# Future forecast example (no exogenous variables needed for Prophet)
+future_preds = model.forecast_future(
+    n_steps=5,
+    start_date='2025-02-08'
+)
 print(future_preds)
 
+# Plot future forecast
+model.plot_future_forecast(
+    n_steps=5,
+    start_date='2025-02-08',
+    save_path='../figures/prophet_future_forecast.png'
+)
