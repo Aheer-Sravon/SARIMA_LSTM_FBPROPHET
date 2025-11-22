@@ -13,6 +13,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+import matplotlib.pyplot as plt
 
 
 class TimeSeriesDataset(Dataset):
@@ -435,3 +436,23 @@ class LSTMForecaster:
         metrics = self.evaluate(predictions)
         
         return predictions, metrics
+
+    def plot_diagnostics(self, save_path: Optional[str] = None):
+        """Plot training and validation loss history."""
+        if not self.train_losses:
+            raise ValueError("Model must be trained before plotting diagnostics")
+        
+        plt.figure(figsize=(12, 6))
+        plt.plot(self.train_losses, label='Train Loss', color='blue')
+        plt.plot(self.val_losses, label='Validation Loss', color='orange')
+        plt.xlabel('Epoch')
+        plt.ylabel('MSE Loss')
+        plt.title('Training and Validation Loss (LSTM)')
+        plt.legend()
+        plt.grid(True)
+        
+        if save_path:
+            plt.savefig(save_path)
+            print(f"Diagnostics plot saved to {save_path}")
+        
+        plt.show()

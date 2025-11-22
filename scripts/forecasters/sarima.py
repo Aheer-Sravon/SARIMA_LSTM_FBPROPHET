@@ -19,6 +19,8 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from itertools import product
 from tqdm import tqdm
 
+import matplotlib.pyplot as plt
+
 class SARIMAForecaster:
     """
     SARIMA (Seasonal AutoRegressive Integrated Moving Average) forecaster for time series prediction.
@@ -272,3 +274,49 @@ class SARIMAForecaster:
             'date': future_dates,
             'predicted_cups_sold': predictions
         })
+
+    def plot_diagnostics(self, save_path: Optional[str] = None):
+        """Plot model diagnostics (residuals, etc.)."""
+        if self.res is None:
+            raise ValueError("Model must be trained before plotting diagnostics")
+        self.res.plot_diagnostics(figsize=(12, 8))
+        if save_path:
+            plt.savefig(save_path)
+            print(f"Diagnostics plot saved to {save_path}")
+        plt.show()
+
+    def plot_actual_vs_predicted(self, predictions: Optional[List[float]] = None, save_path: Optional[str] = None):
+        """Plot actual vs predicted values on the test set."""
+        if predictions is None:
+            predictions = self.predict()
+        test_dates = self.test_data.index
+        actual = self.test_data[self.target_col]
+        
+        plt.figure(figsize=(12, 6))
+        plt.plot(test_dates, actual, label='Actual', color='blue')
+        plt.plot(test_dates, predictions, label='Predicted', color='orange')
+        plt.xlabel('Date')
+        plt.ylabel('Cups Sold')
+        plt.title('Actual vs Predicted Cups Sold (SARIMA)')
+        plt.legend()
+        plt.grid(True)
+        if save_path:
+            plt.savefig(save_path)
+            print(f"Actual vs Predicted plot saved to {save_path}")
+        plt.show()
+
+    def plot_future_forecast(self, n_steps: int = 30, start_date: Optional[str] = None, save_path: Optional[str] = None):
+        """Plot future forecast starting from the end of the test data or a specified date."""
+        if start_date is None:
+            start_date = str(self.test_data.index[-1] + pd.Timedelta(days=1))
+        forecast_df = self.forecast_future(n_steps, start_date)
+        plt.figure(figsize=(12, 6))
+        plt.plot(forecast_df['date'], forecast_df['predicted_cups_sold'], label='Forecast', color='green')
+        plt.xlabel('Date')
+        plt.ylabel('Predicted Cups Sold')
+        plt.title('Future Forecast (SARIMA)')
+        plt.grid(True)
+        if save_path:
+            plt.savefig(save_path)
+            print(f"Future Forecast plot saved to {save_path}")
+        plt.show()
