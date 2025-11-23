@@ -1,14 +1,6 @@
 import warnings
 from statsmodels.tools.sm_exceptions import ValueWarning, ConvergenceWarning
 
-# Suppress convergence and value warnings by category
-warnings.filterwarnings("ignore", category=ValueWarning)
-warnings.filterwarnings("ignore", category=ConvergenceWarning)
-
-# Suppress specific UserWarnings by message (using regex to match exactly)
-warnings.filterwarnings("ignore", message="Non-stationary starting autoregressive parameters found.*")
-warnings.filterwarnings("ignore", message="Non-invertible starting MA parameters found.*")
-
 from pathlib import Path
 from typing import Optional, Tuple, List, Union, Dict, Any
 
@@ -20,6 +12,14 @@ from itertools import product
 from tqdm import tqdm
 
 import matplotlib.pyplot as plt
+
+# Suppress convergence and value warnings by category
+warnings.filterwarnings("ignore", category=ValueWarning)
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
+
+# Suppress specific UserWarnings by message (using regex to match exactly)
+warnings.filterwarnings("ignore", message="Non-stationary starting autoregressive parameters found.*")
+warnings.filterwarnings("ignore", message="Non-invertible starting MA parameters found.*")
 
 class SARIMAForecaster:
     """
@@ -146,7 +146,7 @@ class SARIMAForecaster:
                 print(f"\nBest order: {self.best_order}")
                 print(f"Best seasonal order: {self.best_s_order}")
                 print(f"Best AIC: {result_df['aic'].iloc[0]:.2f}")
-                print(f"\nTop 5 parameter combinations:")
+                print("\nTop 5 parameter combinations:")
                 print(result_df.head())
 
     def fit(self) -> None:

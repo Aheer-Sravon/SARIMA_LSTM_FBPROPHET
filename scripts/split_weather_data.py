@@ -19,9 +19,9 @@ val = df.iloc[train_size:train_size + val_size]
 test = df.iloc[train_size + val_size:]
 
 # Optionally, save the splits to new CSV files
-train.to_csv('../data/preprocessed/train.csv', index=False)
-val.to_csv('../data/preprocessed/validation.csv', index=False)
-test.to_csv('../data/preprocessed/test.csv', index=False)
+train.to_csv('../data/preprocessed/weather/train.csv', index=False)
+val.to_csv('../data/preprocessed/weather/validation.csv', index=False)
+test.to_csv('../data/preprocessed/weather/test.csv', index=False)
 
 # Print the shapes to verify
 print(f"Total rows: {n}")

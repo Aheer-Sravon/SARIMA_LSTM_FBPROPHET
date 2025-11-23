@@ -1,12 +1,17 @@
-# sarimax_forecasting.py
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent))
 from forecasters import SARIMAXForecaster
+sys.path.pop()
+
 import pandas as pd
 
 # Instantiate and run
 model = SARIMAXForecaster(
-    train_path='../data/preprocessed/train.csv',
-    val_path='../data/preprocessed/validation.csv',
-    test_path='../data/preprocessed/test.csv'
+    train_path=Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'train.csv',
+    val_path=Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'validation.csv',
+    test_path=Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'test.csv'
 )
 
 # Optimize with smaller ranges if needed
@@ -15,7 +20,7 @@ model.optimize(p_range=range(0, 4), verbose=True)
 model.train()
 
 # Plot diagnostics after fitting
-model.plot_diagnostics(save_path='../figures/sarimax_diagnostics_plot.png')
+model.plot_diagnostics(save_path=Path(__file__).parent.parent.parent / 'figures' / 'weather_forecast_plots' / 'sarimax_diagnostics_plot.png')
 
 predictions = model.predict()
 
@@ -25,7 +30,7 @@ print(metrics)
 # Plot actual vs predicted
 model.plot_actual_vs_predicted(
     predictions,
-    save_path='../figures/sarimax_actual_vs_predicted.png'
+    save_path=Path(__file__).parent.parent.parent / 'figures' / 'weather_forecast_plots' / 'sarimax_actual_vs_predicted.png'
 )
 
 # Future forecast example (provide exog_future with 'weekday_num' column)
@@ -42,5 +47,5 @@ model.plot_future_forecast(
     n_steps=5,
     start_date='2025-02-08',
     exog_future=exog_future,
-    save_path='../figures/sarimax_future_forecast.png'
+    save_path=Path(__file__).parent.parent.parent / 'figures' / 'weather_forecast_plots' / 'sarimax_future_forecast.png'
 )
