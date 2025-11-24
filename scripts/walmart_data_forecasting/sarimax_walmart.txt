@@ -1,0 +1,13 @@
+For store: 1
+
+Best order: (0, 0, 1)
+Best seasonal order: (1, 0, 0, 7)
+Best AIC: 6.00
+
+Top 5 parameter combinations:
+         params          aic
+0  (0, 1, 1, 0)     6.000000
+1  (2, 1, 0, 0)  3072.247563
+2  (1, 2, 0, 0)  3073.451291
+3  (2, 1, 1, 0)  3073.867267
+4  (2, 1, 0, 1)  3073.888146
