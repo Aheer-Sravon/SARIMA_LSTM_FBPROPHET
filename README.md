@@ -1,6 +1,6 @@
 # Time Series Forecasting for Cups Sold
 
-This repository contains Python scripts and Jupyter notebooks for forecasting daily `cups_sold` using various time series models. The models include SARIMA/SARIMAX,
+This repository contains Python scripts and Jupyter notebooks for forecasting daily `cups_sold` , `weekly_sales` using various time series models. The models include SARIMA/SARIMAX,
 LSTM, CNN-LSTM, and Facebook Prophet. The code is designed for univariate time series prediction, incorporating features like weekday normalization for deep learning
 models and seasonal parameters for statistical models.
 
