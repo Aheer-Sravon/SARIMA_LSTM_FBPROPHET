@@ -1,13 +1,130 @@
 For store: 1
 
-Best order: (0, 0, 1)
-Best seasonal order: (1, 0, 0, 7)
-Best AIC: 6.00
+Best order: (1, 1, 2)
+Best seasonal order: (0, 1, 1, 3)
+Best AIC: 2984.51
 
 Top 5 parameter combinations:
          params          aic
-0  (0, 1, 1, 0)     6.000000
-1  (2, 1, 0, 0)  3072.247563
-2  (1, 2, 0, 0)  3073.451291
-3  (2, 1, 1, 0)  3073.867267
-4  (2, 1, 0, 1)  3073.888146
+0  (1, 2, 0, 1)  2984.507516
+1  (0, 2, 1, 1)  2985.242728
+2  (2, 2, 0, 1)  2985.584577
+3  (2, 2, 1, 1)  2986.341418
+4  (0, 1, 0, 1)  2987.835097
+Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_diagnostics_plot_1.png
+
+Store 1 metrics: {'MAE': 78848.08069015741, 'RMSE': np.float64(96604.47203391808), 'MAPE': np.float64(5.025149934532426)}
+Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_actual_vs_predicted_1.png
+
+Store 1 future predictions:
+        date  predicted_weekly_sales
+0 2012-11-02            1.635600e+06
+1 2012-11-09            1.652314e+06
+2 2012-11-16            1.640168e+06
+3 2012-11-23            1.641574e+06
+4 2012-11-30            1.657624e+06
+Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_future_forecast_1.png
+For store: 2
+
+Best order: (0, 1, 1)
+Best seasonal order: (0, 1, 1, 3)
+Best AIC: 3074.50
+
+Top 5 parameter combinations:
+         params          aic
+0  (0, 1, 0, 1)  3074.502708
+1  (0, 2, 0, 1)  3077.475637
+2  (1, 2, 0, 1)  3078.724554
+3  (2, 2, 0, 1)  3079.106464
+4  (0, 1, 1, 1)  3080.477579
+Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_diagnostics_plot_2.png
+
+Store 2 metrics: {'MAE': 83667.7904161705, 'RMSE': np.float64(112988.896962118), 'MAPE': np.float64(4.386431408102549)}
+Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_actual_vs_predicted_2.png
+
+Store 2 future predictions:
+        date  predicted_weekly_sales
+0 2012-11-02            1.504501e+06
+1 2012-11-09            1.540215e+06
+2 2012-11-16            1.545628e+06
+3 2012-11-23            1.540388e+06
+4 2012-11-30            1.576102e+06
+Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_future_forecast_2.png
+For store: 3
+
+Best order: (0, 1, 1)
+Best seasonal order: (0, 1, 1, 3)
+Best AIC: 2686.40
+
+Top 5 parameter combinations:
+         params          aic
+0  (0, 1, 0, 1)  2686.399745
+1  (0, 2, 0, 1)  2689.881745
+2  (1, 1, 1, 1)  2690.373000
+3  (1, 1, 0, 1)  2693.741542
+4  (1, 2, 0, 1)  2693.839167
+Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_diagnostics_plot_3.png
+
+Store 3 metrics: {'MAE': 14638.781552381703, 'RMSE': np.float64(20305.19893534195), 'MAPE': np.float64(3.5169456504929206)}
+Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_actual_vs_predicted_3.png
+
+Store 3 future predictions:
+        date  predicted_weekly_sales
+0 2012-11-02           433590.488959
+1 2012-11-09           438041.849537
+2 2012-11-16           438136.686855
+3 2012-11-23           438313.785596
+4 2012-11-30           442765.146174
+Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_future_forecast_3.png
+For store: 4
+
+Best order: (0, 1, 2)
+Best seasonal order: (1, 1, 1, 3)
+Best AIC: 3089.94
+
+Top 5 parameter combinations:
+         params          aic
+0  (0, 2, 1, 1)  3089.944370
+1  (0, 1, 1, 1)  3101.950644
+2  (1, 2, 1, 1)  3112.335944
+3  (1, 1, 0, 1)  3112.859858
+4  (0, 1, 0, 1)  3114.121364
+Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_diagnostics_plot_4.png
+
+Store 4 metrics: {'MAE': 85806.4286640752, 'RMSE': np.float64(108483.57394626421), 'MAPE': np.float64(3.989403347539283)}
+Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_actual_vs_predicted_4.png
+
+Store 4 future predictions:
+        date  predicted_weekly_sales
+0 2012-11-02            2.052941e+06
+1 2012-11-09            2.110877e+06
+2 2012-11-16            2.090273e+06
+3 2012-11-23            2.093489e+06
+4 2012-11-30            2.142279e+06
+Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_future_forecast_4.png
+For store: 5
+
+Best order: (0, 1, 2)
+Best seasonal order: (0, 1, 1, 3)
+Best AIC: 2643.37
+
+Top 5 parameter combinations:
+         params          aic
+0  (0, 2, 0, 1)  2643.368699
+1  (1, 3, 0, 0)  2643.627980
+2  (1, 3, 1, 0)  2644.002648
+3  (1, 1, 0, 1)  2645.889803
+4  (3, 3, 0, 0)  2646.335112
+Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_diagnostics_plot_5.png
+
+Store 5 metrics: {'MAE': 16046.023451099049, 'RMSE': np.float64(20133.592214503347), 'MAPE': np.float64(4.843882942358481)}
+Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_actual_vs_predicted_5.png
+
+Store 5 future predictions:
+        date  predicted_weekly_sales
+0 2012-11-02           343307.349509
+1 2012-11-09           387809.445105
+2 2012-11-16           386827.572393
+3 2012-11-23           382224.869536
+4 2012-11-30           397287.163798
+Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarimax_future_forecast_5.png

@@ -12,7 +12,6 @@ sys.path.append(str(Path(__file__).parent.parent))
 from forecasters import SARIMAXForecaster
 sys.path.pop()
 
-# Suppress warnings similar to SARIMAX
 from statsmodels.tools.sm_exceptions import ValueWarning, ConvergenceWarning
 
 warnings.filterwarnings("ignore", category=ValueWarning)
@@ -44,15 +43,21 @@ class WeeklySARIMAXForecaster(SARIMAXForecaster):
             df = df.asfreq('W-FRI')  # Set weekly frequency
         
         # Combine train and validation for model training
-        self.train_val_data = pd.concat([self.train_data, self.val_data]).sort_index()
+        self.train_val = pd.concat([self.train_data, self.val_data]).sort_index()
         
         # Combine all data for sequential prediction
-        self.full_data = pd.concat([self.train_val_data, self.test_data]).sort_index()
+        self.full = pd.concat([self.train_val, self.test_data]).sort_index()
         
-        # Set target series
-        self.target = self.train_val_data[self.target_col]
-        self.train_exog = self.train_val_data[self.exog_cols]
+        # Set target series and exogenous variables
+        self.target = self.train_val[self.target_col]
+        self.train_exog = self.train_val[self.exog_cols]
         self.test_exog = self.test_data[self.exog_cols]
+        
+        # Compatibility with parent class attributes
+        self.train_val_data = self.train_val
+        self.full_data = self.full
+        self.exog = self.train_exog
+        self.full_exog = self.full[self.exog_cols]
 
     def forecast_future(self, n_steps: int, start_date: str, exog_future: pd.DataFrame) -> pd.DataFrame:
         if self.res is None:
@@ -76,7 +81,7 @@ class WeeklySARIMAXForecaster(SARIMAXForecaster):
     def plot_diagnostics(self, save_path: Optional[str] = None):
         """Plot model diagnostics."""
         if self.res is None:
-            raise ValueError("Model must be trained before plotting diagnostics")
+            raise ValueError("Model must be fitted first")
         try:
             self.res.plot_diagnostics(figsize=(12, 8))
         except Exception as e:
@@ -190,7 +195,7 @@ for store in stores:
         Q_range=range(0, 2),
         d=1,
         D=1,
-        s=7,
+        s=3,
         verbose=True
     )
     

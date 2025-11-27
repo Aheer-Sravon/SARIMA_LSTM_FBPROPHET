@@ -32,6 +32,7 @@ and future predictions. It is based on CSV data in the `data/` directory, with p
 - Prophet requires additional setup on some systems (e.g., `pip install pystan` first on older versions).
 
 ## Usage
+
 ### Data Preparation
 - The `data/` directory contains three subfolders:
   - `preprocessed/`: Contains processed data ready for modeling (`train.csv`, `validation.csv`, `test.csv`).
