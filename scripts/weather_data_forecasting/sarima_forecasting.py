@@ -297,7 +297,7 @@ class SARIMAForecaster:
             'Actual': actual.values,
             'Predicted': predictions
         })
-        result_df.to_csv("./weather_sarima_actual_vs_predicted.csv")
+        result_df.to_csv("../log/weather_sarima_actual_vs_predicted.csv")
         
         plt.figure(figsize=(12, 6))
         plt.plot(test_dates, actual, label='Actual', color='blue')

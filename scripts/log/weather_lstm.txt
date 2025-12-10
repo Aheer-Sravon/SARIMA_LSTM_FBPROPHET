@@ -1,0 +1,13 @@
+Epoch 10/100, Train Loss: 0.0283, Val Loss: 0.0208
+Epoch 20/100, Train Loss: 0.0293, Val Loss: 0.0284
+Early stopping at epoch 25
+Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/weather_forecast_plots/lstm_diagnostics_plot.png
+{'MAE': 3.3304668910919673, 'RMSE': np.float64(4.602287842577431), 'MAPE': np.float64(65.00816373310163)}
+Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/weather_forecast_plots/lstm_actual_vs_predicted.png
+        date  predicted_cups_sold
+0 2025-02-08            10.826732
+1 2025-02-09            10.830251
+2 2025-02-10            10.502230
+3 2025-02-11             9.540522
+4 2025-02-12             8.436011
+Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/weather_forecast_plots/lstm_future_forecast.png

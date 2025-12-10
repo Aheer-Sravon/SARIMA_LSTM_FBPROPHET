@@ -1,0 +1,22 @@
+
+Best order: (1, 0, 1)
+Best seasonal order: (0, 0, 0, 7)
+Best AIC: 1463.17
+
+Top 5 parameter combinations:
+         params          aic
+0  (1, 1, 0, 0)  1463.170042
+1  (1, 1, 1, 0)  1463.730259
+2  (1, 1, 0, 1)  1463.748217
+3  (1, 1, 0, 2)  1465.740228
+4  (1, 1, 1, 1)  1466.044329
+Diagnositcs plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/weather_forecast_plots/sarimax_diagnostics_plot.png
+{'MAE': 3.354770757821093, 'RMSE': np.float64(4.611429239974737), 'MAPE': np.float64(57.75763974510162)}
+Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/weather_forecast_plots/sarimax_actual_vs_predicted.png
+        date  predicted_cups_sold
+0 2025-02-08             7.620787
+1 2025-02-09             7.404337
+2 2025-02-10             8.493759
+3 2025-02-11             8.277517
+4 2025-02-12             8.061380
+Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/weather_forecast_plots/sarimax_future_forecast.png

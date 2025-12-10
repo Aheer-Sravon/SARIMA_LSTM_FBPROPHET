@@ -437,7 +437,7 @@ class LSTMForecaster:
             'Date': test_dates,
             'Actual': actual,
             'Predicted': predictions
-        }).to_csv("./weather_lstm_actual_vs_predicted.csv")
+        }).to_csv("../log/weather_lstm_actual_vs_predicted.csv")
         
         plt.figure(figsize=(12, 6))
         plt.plot(test_dates, actual, label='Actual', color='blue')

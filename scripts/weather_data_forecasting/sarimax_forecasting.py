@@ -334,7 +334,7 @@ class SARIMAXForecaster:
             'Date': test_dates,
             'Actual': actual.values,
             'Predicted': predictions
-        }).to_csv("./weather_sarimax_actual_vs_predicted.csv")
+        }).to_csv("../log/weather_sarimax_actual_vs_predicted.csv")
         
         plt.figure(figsize=(12, 6))
         plt.plot(test_dates, actual, label='Actual', color='blue')
