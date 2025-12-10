@@ -1,9 +1,6 @@
 import warnings
 from statsmodels.tools.sm_exceptions import ValueWarning, ConvergenceWarning
-
 from pathlib import Path
-from typing import Optional, Tuple, List, Union, Dict, Any
-
 import pandas as pd
 import numpy as np
 from statsmodels.tsa.statespace.sarimax import SARIMAX
@@ -36,11 +33,11 @@ class SARIMAForecaster:
     
     def __init__(
         self, 
-        train_path: Union[str, Path], 
-        val_path: Union[str, Path], 
-        test_path: Union[str, Path],
-        target_col: str = 'cups_sold'
-    ) -> None:
+        train_path, 
+        val_path, 
+        test_path,
+        target_col = 'cups_sold'
+    ):
         """
         Initialize the SARIMA forecaster.
         
@@ -55,21 +52,21 @@ class SARIMAForecaster:
         self.test_path: Path = Path(test_path)
         self.target_col: str = target_col
         
-        self.train_data: Optional[pd.DataFrame] = None
-        self.val_data: Optional[pd.DataFrame] = None
-        self.test_data: Optional[pd.DataFrame] = None
-        self.train_val: Optional[pd.DataFrame] = None
-        self.full: Optional[pd.DataFrame] = None
-        self.target: Optional[pd.Series] = None
+        self.train_data = None
+        self.val_data = None
+        self.test_data = None
+        self.train_val = None
+        self.full = None
+        self.target = None
         
-        self.best_order: Optional[Tuple[int, int, int]] = None
-        self.best_s_order: Optional[Tuple[int, int, int, int]] = None
-        self.model: Optional[SARIMAX] = None
-        self.res: Optional[Any] = None
+        self.best_order = None
+        self.best_s_order = None
+        self.model = None
+        self.res = None
         
         self.load_data()
 
-    def load_data(self) -> None:
+    def load_data(self):
         """Load and preprocess training, validation, and test data."""
         self.train_data = pd.read_csv(self.train_path)
         self.val_data = pd.read_csv(self.val_path)
@@ -93,14 +90,14 @@ class SARIMAForecaster:
 
     def optimize(
         self,
-        p_range: range = range(0, 3),  # Smaller default for efficiency
-        q_range: range = range(0, 3),
-        P_range: range = range(0, 3),
-        Q_range: range = range(0, 3),
-        d: int = 1,
-        D: int = 0,
-        s: int = 7,
-        verbose: bool = True
+        p_range = range(0, 3),  # Smaller default for efficiency
+        q_range = range(0, 3),
+        P_range = range(0, 3),
+        Q_range = range(0, 3),
+        d = 1,
+        D = 0,
+        s = 7,
+        verbose = True
     ) -> None:
         """
         Optimize SARIMA parameters using grid search and AIC.
@@ -116,7 +113,7 @@ class SARIMAForecaster:
             verbose: Whether to show progress bar
         """
         parameters = list(product(p_range, q_range, P_range, Q_range))
-        results: List[List[Union[Tuple[int, int, int, int], float]]] = []
+        results = []
         
         iterator = tqdm(parameters, desc="Optimizing SARIMA") if verbose else parameters
         
@@ -137,7 +134,7 @@ class SARIMAForecaster:
         if results:
             result_df: pd.DataFrame = pd.DataFrame(results, columns=['params', 'aic'])
             result_df = result_df.sort_values('aic').reset_index(drop=True)
-            best_param: Tuple[int, int, int, int] = result_df['params'].iloc[0]
+            best_param = result_df['params'].iloc[0]
             
             self.best_order = (best_param[0], d, best_param[1])
             self.best_s_order = (best_param[2], D, best_param[3], s)
@@ -149,7 +146,7 @@ class SARIMAForecaster:
                 print("\nTop 5 parameter combinations:")
                 print(result_df.head())
 
-    def fit(self) -> None:
+    def fit(self):
         """Fit the SARIMA model with optimized parameters."""
         if self.best_order is None or self.best_s_order is None:
             self.optimize()
@@ -163,7 +160,7 @@ class SARIMAForecaster:
             )
             self.res = self.model.fit(disp=False, maxiter=500, method='nm')  # Better convergence
 
-    def predict(self) -> List[float]:
+    def predict(self):
         """
         Generate predictions for test set using recursive forecasting.
         
@@ -173,10 +170,10 @@ class SARIMAForecaster:
         if self.best_order is None or self.best_s_order is None:
             raise ValueError("Model must be optimized before making predictions")
         
-        full_target: pd.Series = self.full[self.target_col]
-        train_len: int = len(self.train_val)
-        horizon: int = len(self.test_data)
-        predictions: List[float] = []
+        full_target = self.full[self.target_col]
+        train_len = len(self.train_val)
+        horizon = len(self.test_data)
+        predictions = []
         
         for i in range(train_len, train_len + horizon):
             try:
@@ -195,7 +192,7 @@ class SARIMAForecaster:
         
         return predictions
 
-    def evaluate(self, predictions: Optional[List[float]] = None) -> Dict[str, float]:
+    def evaluate(self, predictions = None):
         """
         Evaluate model performance on test set.
         
@@ -216,7 +213,7 @@ class SARIMAForecaster:
 
         non_zero_mask = actual != 0
         if np.any(non_zero_mask):
-            mape: float = np.mean(
+            mape = np.mean(
                 np.abs((actual[non_zero_mask] - predictions_array[non_zero_mask]) / 
                 actual[non_zero_mask])
             ) * 100
@@ -229,7 +226,7 @@ class SARIMAForecaster:
             'MAPE': mape
         }
 
-    def fit_and_evaluate(self) -> Tuple[List[float], Dict[str, float]]:
+    def fit_and_evaluate(self):
         """
         Fit the model and evaluate on test set.
         
@@ -243,13 +240,13 @@ class SARIMAForecaster:
         
         return predictions, metrics
 
-    def get_summary(self) -> str:
+    def get_summary(self):
         """Get summary of the fitted model."""
         if self.res is None:
             return "Model not yet trained"
         return str(self.res.summary())
 
-    def forecast_future(self, n_steps: int, start_date: str) -> pd.DataFrame:
+    def forecast_future(self, n_steps, start_date):
         """
         Forecast future values.
         
@@ -275,7 +272,7 @@ class SARIMAForecaster:
             'predicted_cups_sold': predictions
         })
 
-    def plot_diagnostics(self, save_path: Optional[str] = None):
+    def plot_diagnostics(self, save_path = None):
         """Plot model diagnostics (residuals, etc.)."""
         if self.res is None:
             raise ValueError("Model must be trained before plotting diagnostics")
@@ -285,7 +282,7 @@ class SARIMAForecaster:
             print(f"Diagnostics plot saved to {save_path}")
         plt.show()
 
-    def plot_actual_vs_predicted(self, predictions: Optional[List[float]] = None, save_path: Optional[str] = None):
+    def plot_actual_vs_predicted(self, predictions = None, save_path = None):
         """Plot actual vs predicted values on the test set."""
         if predictions is None:
             predictions = self.predict()

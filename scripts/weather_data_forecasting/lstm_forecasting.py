@@ -1,5 +1,4 @@
 from pathlib import Path
-
 import pandas as pd
 import numpy as np
 import torch
@@ -35,7 +34,7 @@ class LSTMModel(nn.Module):
     
     def __init__(
         self, 
-        input_size: int, 
+        input_size, 
         hidden_sizes = [128, 64, 128],
         dropout_rates = [0.3, 0.2, 0.1]
     ):
@@ -70,7 +69,7 @@ class LSTMModel(nn.Module):
         # Output layer
         self.fc = nn.Linear(hidden_sizes[2], 1)
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         # x shape: (batch_size, seq_length, input_size)
         
         # First LSTM layer

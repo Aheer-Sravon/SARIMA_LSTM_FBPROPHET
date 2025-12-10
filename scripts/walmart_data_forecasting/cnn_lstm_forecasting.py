@@ -1,132 +1,433 @@
-import sys
+import warnings
+from sklearn.preprocessing import MinMaxScaler
 from pathlib import Path
 import pandas as pd
 from typing import Optional, Tuple
 import numpy as np
-
 import matplotlib.pyplot as plt
 plt.ion()
 
-sys.path.append(str(Path(__file__).parent.parent))
-from forecasters import CNNLSTMForecaster
-sys.path.pop()
-
 # Suppress warnings if needed
-import warnings
 warnings.filterwarnings("ignore")
-
-from sklearn.preprocessing import MinMaxScaler
 
 NUM_STORES = 5
 
-class WeeklyCNNLSTMForecaster(CNNLSTMForecaster):
-    def __init__(
-        self,
-        train_path,
-        val_path,
-        test_path,
-        target_col='weekly_sales',
-        exog_cols=['Holiday_Flag', 'Temperature', 'Fuel_Price', 'CPI', 'Unemployment']
-    ):
-        super().__init__(train_path, val_path, test_path, target_col)
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, Dataset
+import pandas as pd
+import numpy as np
+from pathlib import Path
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+import matplotlib.pyplot as plt
 
-    def load_data(self) -> None:
+
+class TimeSeriesDataset(Dataset):
+    """PyTorch Dataset for time series data."""
+    
+    def __init__(self, X, y):
+        self.X = torch.FloatTensor(X)
+        self.y = torch.FloatTensor(y)
+    
+    def __len__(self):
+        return len(self.X)
+    
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx]
+
+
+class CNNLSTMModel(nn.Module):
+    """
+    CNN-LSTM model for time series forecasting.
+    """
+    
+    def __init__(self, input_size, lstm_hidden_size=128, cnn_filters=128, 
+                 cnn_kernel_size=3, dropout_rates=[0.3, 0.2, 0.1]):
+        super(CNNLSTMModel, self).__init__()
+        
+        # First LSTM layer
+        self.lstm1 = nn.LSTM(
+            input_size=input_size,
+            hidden_size=lstm_hidden_size,
+            batch_first=True
+        )
+        self.bn1 = nn.BatchNorm1d(lstm_hidden_size)
+        self.dropout1 = nn.Dropout(dropout_rates[0])
+        
+        # Conv1D layer (causal padding)
+        self.conv1 = nn.Conv1d(
+            in_channels=lstm_hidden_size,
+            out_channels=cnn_filters,
+            kernel_size=cnn_kernel_size,
+            padding=cnn_kernel_size - 1
+        )
+        self.relu = nn.ReLU()
+        self.bn2 = nn.BatchNorm1d(cnn_filters)
+        self.dropout2 = nn.Dropout(dropout_rates[1])
+        
+        # Second LSTM layer
+        self.lstm2 = nn.LSTM(
+            input_size=cnn_filters,
+            hidden_size=lstm_hidden_size,
+            batch_first=True
+        )
+        self.dropout3 = nn.Dropout(dropout_rates[2])
+        
+        # Output layer
+        self.fc = nn.Linear(lstm_hidden_size, 1)
+    
+    def forward(self, x):
+        # x shape: (batch_size, seq_length, input_size)
+        
+        # First LSTM layer
+        lstm_out, _ = self.lstm1(x)
+        lstm_out = lstm_out.permute(0, 2, 1)
+        lstm_out = self.bn1(lstm_out)
+        lstm_out = lstm_out.permute(0, 2, 1)
+        lstm_out = self.dropout1(lstm_out)
+        
+        # Conv1D layer
+        conv_input = lstm_out.permute(0, 2, 1)
+        conv_out = self.conv1(conv_input)
+        conv_out = self.relu(conv_out)
+        conv_out = conv_out[:, :, :- (self.conv1.kernel_size[0] - 1)]
+        conv_out = self.bn2(conv_out)
+        conv_out = self.dropout2(conv_out)
+        conv_out = conv_out.permute(0, 2, 1)
+        
+        # Second LSTM layer
+        lstm_out, _ = self.lstm2(conv_out)
+        lstm_out = self.dropout3(lstm_out)
+        
+        # Take last timestep
+        last_timestep = lstm_out[:, -1, :]
+        out = self.fc(last_timestep)
+        
+        return out
+
+
+class CNNLSTMForecaster:
+    """
+    CNN-LSTM forecaster for cups_sold prediction using PyTorch.
+    
+    Attributes:
+        train_path: Path to training data CSV file
+        val_path: Path to validation data CSV file
+        test_path: Path to test data CSV file
+        seq_length: Length of input sequences
+        model: CNN-LSTM model
+    """
+    
+    def __init__(self, train_path, val_path, test_path, 
+                 target_col='cups_sold', seq_length=7):
+        """
+        Initialize the CNN-LSTM forecaster.
+        
+        Args:
+            train_path: Path to training CSV file
+            val_path: Path to validation CSV file
+            test_path: Path to test CSV file
+            target_col: Name of the target column to forecast
+            seq_length: Length of input sequences (default: 7 for weekly)
+        """
+        self.train_path = Path(train_path)
+        self.val_path = Path(val_path)
+        self.test_path = Path(test_path)
+        self.target_col = target_col
+        self.seq_length = seq_length
+        
+        self.train_data = None
+        self.val_data = None
+        self.test_data = None
+        self.train_val_data = None
+        
+        self.scaler_y = MinMaxScaler()
+        self.model = None
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        self.train_losses = []
+        self.val_losses = []
+        
+        self.X_train = None
+        self.y_train = None
+        self.X_val = None
+        self.y_val = None
+        self.X_test = None
+        self.y_test = None
+        
+        self.load_data()
+        self.prepare_data()
+    
+    def load_data(self):
+        """Load and preprocess data."""
         self.train_data = pd.read_csv(self.train_path)
         self.val_data = pd.read_csv(self.val_path)
         self.test_data = pd.read_csv(self.test_path)
         
-        # Parse date column and set as index
-        for df_name in ['train_data', 'val_data', 'test_data']:
-            df = getattr(self, df_name)
-            df['date'] = pd.to_datetime(df['date'])
-            df.set_index('date', inplace=True)
-            setattr(self, df_name, df.asfreq('W-FRI'))
+        # Parse dates
+        for df in [self.train_data, self.val_data, self.test_data]:
+            if 'date' in df.columns:
+                df['date'] = pd.to_datetime(df['date'])
+                df.set_index('date', inplace=True)
+            # If no date column, create a simple index
+            elif df.index.name != 'date':
+                df.index = pd.RangeIndex(start=0, stop=len(df))
         
-        # Combine train and validation for scaling
-        self.train_val_data = pd.concat([self.train_data, self.val_data]).sort_index()
+        # Combine train and val for scaling
+        self.train_val_data = pd.concat([self.train_data, self.val_data])
+    
+    def prepare_data(self):
+        """Prepare input sequences with weekday feature."""
+        # Combine all data for sequence creation
+        full_data = pd.concat([self.train_val_data, self.test_data])
         
-        # Full data for reference
-        self.full_data = pd.concat([self.train_val_data, self.test_data]).sort_index()
-
-    def prepare_data(self, window_size: int = 7) -> None:
-        """Prepare data for model with exogenous variables."""
-        self.window_size = window_size
-        self.features = [self.target_col] + self.exog_cols
+        # Add weekday feature if we have datetime index
+        if isinstance(full_data.index, pd.DatetimeIndex):
+            full_data['weekday_norm'] = full_data.index.weekday / 6.0
+        else:
+            # Create a dummy weekday feature if no datetime index
+            full_data['weekday_norm'] = np.tile(np.arange(7) / 6.0, 
+                                                len(full_data) // 7 + 1)[:len(full_data)]
         
-        # Scaler for all features
-        self.scaler = MinMaxScaler()
-        train_val_features = self.train_val_data[self.features].values
-        self.scaler.fit(train_val_features)
+        # Scale target
+        train_val_y = self.train_val_data[[self.target_col]].values
+        self.scaler_y.fit(train_val_y)
+        y_scaled = self.scaler_y.transform(full_data[[self.target_col]])
         
-        # Scale all data
-        scaled_train_val = self.scaler.transform(self.train_val_data[self.features])
-        scaled_test = self.scaler.transform(self.test_data[self.features])
+        # Combine scaled target and weekday
+        features = np.hstack([y_scaled, full_data[['weekday_norm']].values])
         
-        # Create sequences for train+val
-        X_train_val, y_train_val = self._create_sequences(scaled_train_val)
-        
-        # Split train/val sequences
-        train_len = len(self.train_data)
-        self.X_train = X_train_val[:train_len - self.window_size]
-        self.y_train = y_train_val[:train_len - self.window_size]
-        
-        self.X_val = X_train_val[train_len - self.window_size:]
-        self.y_val = y_train_val[train_len - self.window_size:]
-        
-        # Test sequences
-        scaled_full = np.vstack((scaled_train_val, scaled_test))
-        X_test, y_test = self._create_sequences(scaled_full)
-        self.X_test = X_test[len(X_train_val):]
-        self.y_test = y_test[len(X_train_val):].reshape(-1, 1)
-
-    def _create_sequences(self, data: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        # Create sequences
         X, y = [], []
-        for i in range(len(data) - self.window_size):
-            X.append(data[i:i + self.window_size])
-            y.append(data[i + self.window_size, 0])  # Target is first column
-        return np.array(X), np.array(y)
-
-    def forecast_future(self, n_steps: int, start_date: str, exog_future: pd.DataFrame) -> pd.DataFrame:
+        for i in range(len(features) - self.seq_length):
+            X.append(features[i:i+self.seq_length])
+            y.append(y_scaled[i+self.seq_length, 0])  # Predict next cups_sold
+        
+        X = np.array(X)
+        y = np.array(y).reshape(-1, 1)
+        
+        # Split back into train, val, test
+        train_end = len(self.train_data)
+        val_end = train_end + len(self.val_data)
+        
+        self.X_train = X[:train_end - self.seq_length]
+        self.y_train = y[:train_end - self.seq_length]
+        
+        self.X_val = X[train_end - self.seq_length:val_end - self.seq_length]
+        self.y_val = y[train_end - self.seq_length:val_end - self.seq_length]
+        
+        self.X_test = X[val_end - self.seq_length:]
+        self.y_test = y[val_end - self.seq_length:]
+    
+    def train(self, epochs=100, batch_size=32, learning_rate=0.0005, 
+              patience=10, verbose=True):
+        """Train the CNN-LSTM model with early stopping."""
+        input_size = self.X_train.shape[2]  # features
+        
+        self.model = CNNLSTMModel(input_size=input_size).to(self.device)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
+        criterion = nn.MSELoss()
+        
+        train_dataset = TimeSeriesDataset(self.X_train, self.y_train)
+        val_dataset = TimeSeriesDataset(self.X_val, self.y_val)
+        
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+        
+        self.train_losses = []
+        self.val_losses = []
+        best_val_loss = float('inf')
+        patience_counter = 0
+        
+        for epoch in range(epochs):
+            self.model.train()
+            train_loss = 0.0
+            for X_batch, y_batch in train_loader:
+                X_batch = X_batch.to(self.device)
+                y_batch = y_batch.to(self.device)
+                
+                optimizer.zero_grad()
+                outputs = self.model(X_batch)
+                loss = criterion(outputs, y_batch)
+                loss.backward()
+                optimizer.step()
+                
+                train_loss += loss.item() * X_batch.size(0)
+            
+            train_loss /= len(train_loader.dataset)
+            self.train_losses.append(train_loss)
+            
+            # Validation
+            self.model.eval()
+            val_loss = 0.0
+            with torch.no_grad():
+                for X_batch, y_batch in val_loader:
+                    X_batch = X_batch.to(self.device)
+                    y_batch = y_batch.to(self.device)
+                    outputs = self.model(X_batch)
+                    val_loss += criterion(outputs, y_batch).item() * X_batch.size(0)
+            
+            val_loss /= len(val_loader.dataset)
+            self.val_losses.append(val_loss)
+            
+            if verbose and (epoch + 1) % 10 == 0:
+                print(f"Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+            
+            # Early stopping
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                patience_counter = 0
+                torch.save(self.model.state_dict(), 'best_cnnlstm_model.pth')
+            else:
+                patience_counter += 1
+                if patience_counter >= patience:
+                    if verbose:
+                        print(f"Early stopping at epoch {epoch+1}")
+                    break
+        
+        # Load best model
+        self.model.load_state_dict(torch.load('best_cnnlstm_model.pth'))
+    
+    def predict(self):
+        """Generate predictions on test set."""
+        if self.model is None:
+            raise ValueError("Model must be trained before predicting")
+        
+        test_dataset = TimeSeriesDataset(self.X_test, self.y_test)
+        test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+        
+        self.model.eval()
+        predictions = []
+        with torch.no_grad():
+            for X_batch, _ in test_loader:
+                X_batch = X_batch.to(self.device)
+                outputs = self.model(X_batch)
+                predictions.extend(outputs.cpu().numpy().flatten())
+        
+        predictions = np.array(predictions)
+        return self.scaler_y.inverse_transform(predictions.reshape(-1, 1)).flatten()
+    
+    def forecast_future(self, n_steps, start_date):
+        """
+        Forecast future values using recursive prediction.
+        
+        Args:
+            n_steps: Number of steps to forecast
+            start_date: Start date for forecast (format: 'YYYY-MM-DD')
+        
+        Returns:
+            DataFrame with forecasted values
+        """
         if self.model is None:
             raise ValueError("Model must be trained before forecasting")
         
-        if len(exog_future) != n_steps:
-            raise ValueError(f"exog_future must have {n_steps} rows")
+        # Get all data for the last window
+        full_data = pd.concat([self.train_val_data, self.test_data])
+        
+        # Handle start_date: if not a datetime, create one
+        try:
+            start_date_dt = pd.to_datetime(start_date)
+        except:
+            # If start_date is not a valid date, use the day after last data point
+            if hasattr(full_data.index, '__len__') and len(full_data.index) > 0:
+                last_date = full_data.index[-1]
+                if isinstance(last_date, pd.Timestamp):
+                    start_date_dt = last_date + pd.Timedelta(days=1)
+                else:
+                    start_date_dt = pd.Timestamp.now()
+            else:
+                start_date_dt = pd.Timestamp.now()
         
         # Generate future dates
-        future_dates = pd.date_range(start=start_date, periods=n_steps, freq='W-FRI')
+        future_dates = pd.date_range(start=start_date_dt, periods=n_steps, freq='D')
+        future_weekdays = future_dates.weekday.values / 6.0
         
-        # Scale future exog with dummy target (0, will be replaced)
-        dummy_target = np.zeros((n_steps, 1))
-        future_features = np.hstack((dummy_target, exog_future.values))
-        exog_future_scaled = self.scaler.transform(future_features)[:, 1:]
+        # Get last window from scaled data
+        y_scaled = self.scaler_y.transform(full_data[[self.target_col]])
+        last_window_scaled = y_scaled[-self.seq_length:]
+        
+        # Get last weekdays from data or create dummy
+        if isinstance(full_data.index, pd.DatetimeIndex):
+            last_weekdays = full_data.index[-self.seq_length:].weekday.values / 6.0
+        else:
+            # Create dummy weekdays if no datetime index
+            last_weekdays = np.tile(np.arange(7) / 6.0, 
+                                    self.seq_length // 7 + 1)[:self.seq_length]
+        
+        current_window = np.hstack([last_window_scaled, last_weekdays.reshape(-1, 1)])
         
         predictions = []
-        current_window = self.scaler.transform(self.full_data[self.features])[-self.window_size:].copy()
-        
         self.model.eval()
+        
         for i in range(n_steps):
+            # Prepare input
             X_input = torch.FloatTensor(current_window).unsqueeze(0).to(self.device)
             
+            # Predict
             with torch.no_grad():
                 pred_scaled = self.model(X_input).cpu().numpy()[0, 0]
             
-            # Inverse transform with dummy exog (doesn't matter for target)
-            dummy = np.zeros((1, len(self.features)))
-            dummy[0, 0] = pred_scaled
-            pred = self.scaler.inverse_transform(dummy)[0, 0]
+            # Inverse transform
+            pred = self.scaler_y.inverse_transform([[pred_scaled]])[0, 0]
             predictions.append(pred)
             
             # Update window
-            new_step = np.concatenate([[pred_scaled], exog_future_scaled[i]])
+            weekday_norm = future_weekdays[i]
+            new_step = np.array([[pred_scaled, weekday_norm]])
             current_window = np.vstack([current_window[1:], new_step])
         
         return pd.DataFrame({
             'date': future_dates,
-            'predicted_weekly_sales': predictions
+            'predicted_cups_sold': predictions
         })
-
-    def plot_diagnostics(self, save_path: Optional[str] = None):
+    
+    def evaluate(self, predictions=None):
+        """
+        Evaluate model performance on test set.
+        
+        Args:
+            predictions: Pre-computed predictions (if None, will compute them)
+        
+        Returns:
+            Dictionary containing MAE, RMSE, and MAPE metrics
+        """
+        if predictions is None:
+            predictions = self.predict()
+        
+        actual = self.test_data[self.target_col].values
+        
+        mae = mean_absolute_error(actual, predictions)
+        rmse = np.sqrt(mean_squared_error(actual, predictions))
+        non_zero_mask = actual != 0
+        if np.any(non_zero_mask):
+            mape = np.mean(
+                np.abs((actual[non_zero_mask] - predictions[non_zero_mask]) / actual[non_zero_mask])
+            ) * 100
+        else:
+            mape = 0.0
+        
+        return {
+            'MAE': mae,
+            'RMSE': rmse,
+            'MAPE': mape
+        }
+    
+    def fit_and_evaluate(self, epochs=100, batch_size=32, learning_rate=0.0005,
+                         patience=10, verbose=True):
+        """
+        Fit the model and evaluate on test set.
+        
+        Returns:
+            Tuple of (predictions, metrics dictionary)
+        """
+        self.train(epochs, batch_size, learning_rate, patience, verbose=verbose)
+        predictions = self.predict()
+        metrics = self.evaluate(predictions)
+        
+        return predictions, metrics
+    
+    def plot_diagnostics(self, save_path=None):
         """Plot training and validation loss history."""
         if not self.train_losses:
             raise ValueError("Model must be trained before plotting diagnostics")
@@ -145,140 +446,160 @@ class WeeklyCNNLSTMForecaster(CNNLSTMForecaster):
             print(f"Diagnostics plot saved to {save_path}")
         
         plt.show()
-
-    def plot_actual_vs_predicted(self, predictions: Optional[np.ndarray] = None, save_path: Optional[str] = None):
+    
+    def plot_actual_vs_predicted(self, predictions=None, save_path=None):
         """Plot actual vs predicted values on the test set."""
         if predictions is None:
             predictions = self.predict()
+        
         test_dates = self.test_data.index
         actual = self.test_data[self.target_col].values
+        
+        # Save to CSV if path ends with .csv
+        if save_path and save_path.endswith('.csv'):
+            pd.DataFrame({
+                'Date': test_dates,
+                'Actual': actual,
+                'Predicted': predictions
+            }).to_csv(save_path, index=False)
+            print(f"Actual vs Predicted data saved to {save_path}")
         
         plt.figure(figsize=(12, 6))
         plt.plot(test_dates, actual, label='Actual', color='blue')
         plt.plot(test_dates, predictions, label='Predicted', color='orange')
         plt.xlabel('Date')
-        plt.ylabel('Weekly Sales')
-        plt.title('Actual vs Predicted Weekly Sales (CNN-LSTM)')
+        plt.ylabel('Cups Sold')
+        plt.title('Actual vs Predicted Cups Sold (CNN-LSTM)')
         plt.legend()
         plt.grid(True)
         
-        if save_path:
+        if save_path and not save_path.endswith('.csv'):
             plt.savefig(save_path)
             print(f"Actual vs Predicted plot saved to {save_path}")
         
         plt.show()
-
-    def plot_future_forecast(self, n_steps: int, exog_future: pd.DataFrame, start_date: str = '2012-11-02', save_path: Optional[str] = None):
-        """Plot future forecast."""
-        forecast_df = self.forecast_future(n_steps, start_date, exog_future)
+    
+    def plot_future_forecast(self, n_steps=30, start_date=None, save_path=None):
+        """Plot future forecast starting from the end of the test data or a specified date."""
+        if start_date is None:
+            if hasattr(self.test_data.index, '__len__') and len(self.test_data.index) > 0:
+                last_date = self.test_data.index[-1]
+                if isinstance(last_date, pd.Timestamp):
+                    start_date = str(last_date + pd.Timedelta(days=1))
+                else:
+                    start_date = str(pd.Timestamp.now())
+            else:
+                start_date = str(pd.Timestamp.now())
+        
+        forecast_df = self.forecast_future(n_steps, start_date)
+        
         plt.figure(figsize=(12, 6))
-        plt.plot(forecast_df['date'], forecast_df['predicted_weekly_sales'], label='Forecast', color='green')
+        plt.plot(forecast_df['date'], forecast_df['predicted_cups_sold'], label='Forecast', color='green')
         plt.xlabel('Date')
-        plt.ylabel('Predicted Weekly Sales')
+        plt.ylabel('Predicted Cups Sold')
         plt.title('Future Forecast (CNN-LSTM)')
         plt.grid(True)
-
+        
         if save_path:
             plt.savefig(save_path)
             print(f"Future Forecast plot saved to {save_path}")
-
+        
         plt.show()
 
-if __name__ == '__main__':
-    # Define paths
-    base_data_path = Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'walmart'
-    base_fig_path = Path(__file__).parent.parent.parent / 'figures' / 'walmart_forecast_plots'
+# Define paths
+base_data_path = Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'walmart'
+base_fig_path = Path(__file__).parent.parent.parent / 'figures' / 'walmart_forecast_plots'
+
+base_data_path.mkdir(parents=True, exist_ok=True)
+base_fig_path.mkdir(parents=True, exist_ok=True)
+
+# Load and merge data
+df = pd.read_csv(base_data_path / 'walmart.csv')
+
+for store in range(1, NUM_STORES + 1):
+    print(f"For store: {store}")
+    df_store = df[df['Store'] == store].copy()
+    df_store['Date'] = pd.to_datetime(df_store['Date'], format='%d-%m-%Y')
+    df_store = df_store.sort_values('Date')
+    df_store.rename(columns={'Date': 'date', 'Weekly_Sales': 'weekly_sales'}, inplace=True)
     
-    base_data_path.mkdir(parents=True, exist_ok=True)
-    base_fig_path.mkdir(parents=True, exist_ok=True)
+    # Aggregate to store-level to handle department duplicates
+    agg_dict = {'weekly_sales': 'sum'}
+    for col in ['Holiday_Flag', 'Temperature', 'Fuel_Price', 'CPI', 'Unemployment']:
+        if col in df_store.columns:
+            agg_dict[col] = 'first'
+    for md in ['MarkDown1', 'MarkDown2', 'MarkDown3', 'MarkDown4', 'MarkDown5']:
+        if md in df_store.columns:
+            agg_dict[md] = 'first'
+    df_store = df_store.groupby('date').agg(agg_dict).reset_index()
     
-    # Load and merge data
-    df = pd.read_csv(base_data_path / 'walmart.csv')
+    # Split the data chronologically
+    n = len(df_store)
+    train_size = int(0.7 * n)
+    val_size = int(0.1 * n)
+    test_size = n - train_size - val_size
     
-    for store in range(1, NUM_STORES + 1):
-        print(f"For store: {store}")
-        df_store = df[df['Store'] == store].copy()
-        df_store['Date'] = pd.to_datetime(df_store['Date'], format='%d-%m-%Y')
-        df_store = df_store.sort_values('Date')
-        df_store.rename(columns={'Date': 'date', 'Weekly_Sales': 'weekly_sales'}, inplace=True)
-        
-        # Aggregate to store-level to handle department duplicates
-        agg_dict = {'weekly_sales': 'sum'}
-        for col in ['Holiday_Flag', 'Temperature', 'Fuel_Price', 'CPI', 'Unemployment']:
-            if col in df_store.columns:
-                agg_dict[col] = 'first'
-        for md in ['MarkDown1', 'MarkDown2', 'MarkDown3', 'MarkDown4', 'MarkDown5']:
-            if md in df_store.columns:
-                agg_dict[md] = 'first'
-        df_store = df_store.groupby('date').agg(agg_dict).reset_index()
-        
-        # Split the data chronologically
-        n = len(df_store)
-        train_size = int(0.7 * n)
-        val_size = int(0.1 * n)
-        test_size = n - train_size - val_size
-        
-        train = df_store.iloc[:train_size]
-        val = df_store.iloc[train_size:train_size + val_size]
-        test = df_store.iloc[train_size + val_size:]
-        
-        # Save splits to CSV files for the store
-        train_path = base_data_path / f'train_{store}.csv'
-        val_path = base_data_path / f'validation_{store}.csv'
-        test_path = base_data_path / f'test_{store}.csv'
-        
-        train.to_csv(train_path, index=False)
-        val.to_csv(val_path, index=False)
-        test.to_csv(test_path, index=False)
-        
-        # Instantiate and run for this store
-        model = WeeklyCNNLSTMForecaster(
-            train_path=train_path,
-            val_path=val_path,
-            test_path=test_path,
-            target_col='weekly_sales',
-            exog_cols=['Holiday_Flag', 'Temperature', 'Fuel_Price', 'CPI', 'Unemployment']
-        )
-        
-        # Train
-        model.train(
-            epochs=100,
-            batch_size=32,
-            learning_rate=0.0005,
-            patience=15,
-            verbose=True
-        )
-        
-        # Plot diagnostics after fitting
-        diag_path = base_fig_path / f'cnn_lstm_diagnostics_plot_{store}.png'
-        model.plot_diagnostics(save_path=diag_path)
-        
-        predictions = model.predict()
-        
-        metrics = model.evaluate(predictions)
-        print(f"\nStore {store} metrics: {metrics}")
-        
-        # Plot actual vs predicted
-        avp_path = base_fig_path / f'cnn_lstm_actual_vs_predicted_{store}.png'
-        model.plot_actual_vs_predicted(predictions, save_path=avp_path)
-        
-        # Future forecast example
-        # Use last exog values repeated for future
-        exog_last = model.test_data[model.exog_cols].iloc[-1]
-        exog_future = pd.DataFrame([exog_last] * 5, columns=model.exog_cols)
-        
-        future_preds = model.forecast_future(
-            n_steps=5,
-            start_date='2012-11-02',
-            exog_future=exog_future
-        )
-        print(f"\nStore {store} future predictions:\n{future_preds}")
-        
-        # Plot future forecast
-        ff_path = base_fig_path / f'cnn_lstm_future_forecast_{store}.png'
-        model.plot_future_forecast(
-            n_steps=5,
-            exog_future=exog_future,
-            start_date='2012-11-02',
-            save_path=ff_path
-        )
+    train = df_store.iloc[:train_size]
+    val = df_store.iloc[train_size:train_size + val_size]
+    test = df_store.iloc[train_size + val_size:]
+    
+    # Save splits to CSV files for the store
+    train_path = base_data_path / f'train_{store}.csv'
+    val_path = base_data_path / f'validation_{store}.csv'
+    test_path = base_data_path / f'test_{store}.csv'
+    
+    train.to_csv(train_path, index=False)
+    val.to_csv(val_path, index=False)
+    test.to_csv(test_path, index=False)
+    
+    # Instantiate and run for this store
+    model = CNNLSTMForecaster(
+        train_path=train_path,
+        val_path=val_path,
+        test_path=test_path,
+        target_col='weekly_sales',
+        exog_cols=['Holiday_Flag', 'Temperature', 'Fuel_Price', 'CPI', 'Unemployment']
+    )
+    
+    # Train
+    model.train(
+        epochs=100,
+        batch_size=32,
+        learning_rate=0.0005,
+        patience=15,
+        verbose=True
+    )
+    
+    # Plot diagnostics after fitting
+    diag_path = base_fig_path / f'cnn_lstm_diagnostics_plot_{store}.png'
+    model.plot_diagnostics(save_path=diag_path)
+    
+    predictions = model.predict()
+    
+    metrics = model.evaluate(predictions)
+    print(f"\nStore {store} metrics: {metrics}")
+    
+    # Plot actual vs predicted
+    avp_path = base_fig_path / f'cnn_lstm_actual_vs_predicted_{store}.png'
+    model.plot_actual_vs_predicted(predictions, save_path=avp_path)
+    
+    # Future forecast example
+    # Use last exog values repeated for future
+    exog_last = model.test_data[model.exog_cols].iloc[-1]
+    exog_future = pd.DataFrame([exog_last] * 5, columns=model.exog_cols)
+    
+    future_preds = model.forecast_future(
+        n_steps=5,
+        start_date='2012-11-02',
+        exog_future=exog_future
+    )
+    print(f"\nStore {store} future predictions:\n{future_preds}")
+    
+    # Plot future forecast
+    ff_path = base_fig_path / f'cnn_lstm_future_forecast_{store}.png'
+    model.plot_future_forecast(
+        n_steps=5,
+        exog_future=exog_future,
+        start_date='2012-11-02',
+        save_path=ff_path
+    )
