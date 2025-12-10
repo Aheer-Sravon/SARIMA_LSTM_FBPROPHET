@@ -10,6 +10,7 @@ dependencies = [
     "pandas>=2.3.3",
     "plotly>=6.5.0",
     "prophet>=1.2.1",
+    "pyqt5>=5.15.11; sys_platform == 'linux'",
     "scikit-learn>=1.7.2",
     "statsmodels>=0.14.5",
     "torch>=2.9.1",
