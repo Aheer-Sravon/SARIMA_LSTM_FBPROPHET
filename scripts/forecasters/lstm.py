@@ -1,8 +1,3 @@
-"""
-LSTM Forecaster for Time Series Prediction using PyTorch
-Adapted from TensorFlow implementation in notebooks to PyTorch
-"""
-
 from pathlib import Path
 from typing import Optional, Tuple, List, Union, Dict, Any
 
