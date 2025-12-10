@@ -1,6 +1,6 @@
-# Time Series Forecasting for Cups Sold
+# Time Series Forecasting
 
-This repository contains Python scripts and Jupyter notebooks for forecasting daily `cups_sold` using various time series models. The models include SARIMA/SARIMAX,
+This repository contains Python scripts and Jupyter notebooks for forecasting daily `cups_sold` , `weekly_sales` using various time series models. The models include SARIMA/SARIMAX,
 LSTM, CNN-LSTM, and Facebook Prophet. The code is designed for univariate time series prediction, incorporating features like weekday normalization for deep learning
 models and seasonal parameters for statistical models.
 
@@ -29,9 +29,10 @@ and future predictions. It is based on CSV data in the `data/` directory, with p
    uv sync
    ```
 - Note: PyTorch may require platform-specific installation (e.g., for GPU support: see [PyTorch installation guide](https://pytorch.org/get-started/locally/)).
-- Prophet requires additional setup on some systems (e.g., `pip install pystan` first on older versions).
+- Prophet requires additional setup on some systems (e.g., `uv add pystan` first on older versions).
 
 ## Usage
+
 ### Data Preparation
 - The `data/` directory contains three subfolders:
   - `preprocessed/`: Contains processed data ready for modeling (`train.csv`, `validation.csv`, `test.csv`).

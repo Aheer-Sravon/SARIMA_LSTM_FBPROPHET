@@ -1,7 +1,7 @@
 [project]
 name = "sarima-lstm-fbprophet"
 version = "0.1.0"
-description = "Add your description here"
+description = "Comparing between SARIMA, SARIMAX, FBPROPHET, LSTM, CNN-LSTM Forecasting"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
