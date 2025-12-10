@@ -1,6 +1,4 @@
 from pathlib import Path
-from typing import Optional, Tuple, List, Union, Dict
-
 import pandas as pd
 import numpy as np
 import torch
@@ -13,14 +11,14 @@ import matplotlib.pyplot as plt
 class TimeSeriesDataset(Dataset):
     """PyTorch Dataset for time series data."""
     
-    def __init__(self, X: np.ndarray, y: np.ndarray):
+    def __init__(self, X, y):
         self.X = torch.FloatTensor(X)
         self.y = torch.FloatTensor(y)
     
-    def __len__(self) -> int:
+    def __len__(self):
         return len(self.X)
     
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
 
 
@@ -36,11 +34,11 @@ class CNNLSTMModel(nn.Module):
     
     def __init__(
         self,
-        input_size: int,
-        lstm_hidden_size: int = 128,
-        cnn_filters: int = 128,
-        cnn_kernel_size: int = 3,
-        dropout_rates: List[float] = [0.3, 0.2, 0.1]
+        input_size,
+        lstm_hidden_size = 128,
+        cnn_filters = 128,
+        cnn_kernel_size = 3,
+        dropout_rates = [0.3, 0.2, 0.1]
     ):
         super(CNNLSTMModel, self).__init__()
         
@@ -75,7 +73,7 @@ class CNNLSTMModel(nn.Module):
         # Output layer
         self.fc = nn.Linear(lstm_hidden_size, 1)
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         # x shape: (batch_size, seq_length, input_size)
         
         # First LSTM layer
@@ -119,12 +117,12 @@ class CNNLSTMForecaster:
     
     def __init__(
         self,
-        train_path: Union[str, Path],
-        val_path: Union[str, Path],
-        test_path: Union[str, Path],
-        target_col: str = 'cups_sold',
-        seq_length: int = 7  # Weekly window
-    ) -> None:
+        train_path,
+        val_path,
+        test_path,
+        target_col = 'cups_sold',
+        seq_length = 7  # Weekly window
+    ):
         """
         Initialize the CNN-LSTM forecaster.
         
@@ -162,7 +160,7 @@ class CNNLSTMForecaster:
         
         self.load_data()
     
-    def load_data(self) -> None:
+    def load_data(self):
         """Load and preprocess data."""
         self.train_data = pd.read_csv(self.train_path)
         self.val_data = pd.read_csv(self.val_path)
@@ -223,7 +221,7 @@ class CNNLSTMForecaster:
         learning_rate: float = 0.0005,
         patience: int = 10,
         verbose: bool = True
-    ) -> None:
+    ):
         """Train the CNN-LSTM model with early stopping."""
         input_size = self.X_train.shape[2]  # features
         
@@ -291,7 +289,7 @@ class CNNLSTMForecaster:
         # Load best model
         self.model.load_state_dict(torch.load('best_cnnlstm_model.pth'))
     
-    def predict(self) -> np.ndarray:
+    def predict(self):
         """Generate predictions on test set."""
         if self.model is None:
             raise ValueError("Model must be trained before predicting")
@@ -310,7 +308,7 @@ class CNNLSTMForecaster:
         predictions = np.array(predictions)
         return self.scaler_y.inverse_transform(predictions.reshape(-1, 1)).flatten()
     
-    def forecast_future(self, n_steps: int, start_date: str) -> pd.DataFrame:
+    def forecast_future(self, n_steps, start_date):
         """
         Forecast future values using recursive prediction.
         
@@ -360,7 +358,7 @@ class CNNLSTMForecaster:
             'predicted_cups_sold': predictions
         })
     
-    def evaluate(self, predictions: Optional[np.ndarray] = None) -> Dict[str, float]:
+    def evaluate(self, predictions = None):
         """
         Evaluate model performance on test set.
         
@@ -393,12 +391,12 @@ class CNNLSTMForecaster:
     
     def fit_and_evaluate(
         self,
-        epochs: int = 100,
-        batch_size: int = 32,
-        learning_rate: float = 0.0005,
-        patience: int = 10,
-        verbose: bool = True
-    ) -> Tuple[np.ndarray, Dict[str, float]]:
+        epochs = 100,
+        batch_size = 32,
+        learning_rate = 0.0005,
+        patience = 10,
+        verbose = True
+    ):
         """
         Fit the model and evaluate on test set.
         
@@ -411,7 +409,7 @@ class CNNLSTMForecaster:
         
         return predictions, metrics
 
-    def plot_diagnostics(self, save_path: Optional[str] = None):
+    def plot_diagnostics(self, save_path = None):
         """Plot training and validation loss history."""
         if not self.train_losses:
             raise ValueError("Model must be trained before plotting diagnostics")
@@ -431,7 +429,7 @@ class CNNLSTMForecaster:
         
         plt.show()
 
-    def plot_actual_vs_predicted(self, predictions: Optional[np.ndarray] = None, save_path: Optional[str] = None):
+    def plot_actual_vs_predicted(self, predictions = None, save_path = None):
         """Plot actual vs predicted values on the test set."""
         if predictions is None:
             predictions = self.predict()
@@ -459,7 +457,7 @@ class CNNLSTMForecaster:
         
         plt.show()
 
-    def plot_future_forecast(self, n_steps: int = 30, start_date: Optional[str] = None, save_path: Optional[str] = None):
+    def plot_future_forecast(self, n_steps = 30, start_date = None, save_path = None):
         """Plot future forecast starting from the end of the test data or a specified date."""
         if start_date is None:
             start_date = str(self.test_data.index[-1] + pd.Timedelta(days=1))

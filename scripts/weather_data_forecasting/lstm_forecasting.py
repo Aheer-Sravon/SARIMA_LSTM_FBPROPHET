@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional, Tuple, List, Union, Dict
 
 import pandas as pd
 import numpy as np
@@ -14,14 +13,14 @@ import matplotlib.pyplot as plt
 class TimeSeriesDataset(Dataset):
     """PyTorch Dataset for time series data."""
     
-    def __init__(self, X: np.ndarray, y: np.ndarray):
+    def __init__(self, X, y):
         self.X = torch.FloatTensor(X)
         self.y = torch.FloatTensor(y)
     
     def __len__(self) -> int:
         return len(self.X)
     
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
 
 
@@ -37,8 +36,8 @@ class LSTMModel(nn.Module):
     def __init__(
         self, 
         input_size: int, 
-        hidden_sizes: List[int] = [128, 64, 128],
-        dropout_rates: List[float] = [0.3, 0.2, 0.1]
+        hidden_sizes = [128, 64, 128],
+        dropout_rates = [0.3, 0.2, 0.1]
     ):
         super(LSTMModel, self).__init__()
         
@@ -113,12 +112,12 @@ class LSTMForecaster:
     
     def __init__(
         self,
-        train_path: Union[str, Path],
-        val_path: Union[str, Path],
-        test_path: Union[str, Path],
-        target_col: str = 'cups_sold',
-        seq_length: int = 7  # Weekly window
-    ) -> None:
+        train_path,
+        val_path,
+        test_path,
+        target_col = 'cups_sold',
+        seq_length = 7  # Weekly window
+    ):
         """
         Initialize the LSTM forecaster.
         
@@ -156,7 +155,7 @@ class LSTMForecaster:
         
         self.load_data()
     
-    def load_data(self) -> None:
+    def load_data(self):
         """Load and preprocess data."""
         self.train_data = pd.read_csv(self.train_path)
         self.val_data = pd.read_csv(self.val_path)
@@ -177,7 +176,7 @@ class LSTMForecaster:
         # Prepare sequences with weekday_num
         self._prepare_sequences()
     
-    def _prepare_sequences(self) -> None:
+    def _prepare_sequences(self):
         """Prepare input sequences with weekday feature."""
         full_data = pd.concat([self.train_val_data, self.test_data])
         full_data['weekday_norm'] = full_data.index.weekday / 6.0  # Normalize 0-6 to 0-1
@@ -212,12 +211,12 @@ class LSTMForecaster:
     
     def train(
         self,
-        epochs: int = 100,
-        batch_size: int = 32,
-        learning_rate: float = 0.0005,
-        patience: int = 15,
-        verbose: bool = True
-    ) -> None:
+        epochs = 100,
+        batch_size = 32,
+        learning_rate = 0.0005,
+        patience = 15,
+        verbose = True
+    ):
         """Train the LSTM model with early stopping."""
         input_size = self.X_train.shape[2]  # features
         
@@ -285,7 +284,7 @@ class LSTMForecaster:
         # Load best model
         self.model.load_state_dict(torch.load('best_lstm_model.pth'))
     
-    def predict(self) -> np.ndarray:
+    def predict(self):
         """Generate predictions on test set."""
         if self.model is None:
             raise ValueError("Model must be trained before predicting")
@@ -304,7 +303,7 @@ class LSTMForecaster:
         predictions = np.array(predictions)
         return self.scaler_y.inverse_transform(predictions.reshape(-1, 1)).flatten()
     
-    def forecast_future(self, n_steps: int, start_date: str) -> pd.DataFrame:
+    def forecast_future(self, n_steps, start_date):
         """
         Forecast future values using recursive prediction.
         
@@ -354,7 +353,7 @@ class LSTMForecaster:
             'predicted_cups_sold': predictions
         })
     
-    def evaluate(self, predictions: Optional[np.ndarray] = None) -> Dict[str, float]:
+    def evaluate(self, predictions = None):
         """
         Evaluate model performance on test set.
         
@@ -393,7 +392,7 @@ class LSTMForecaster:
         learning_rate: float = 0.0005,
         patience: int = 15,
         verbose: bool = True
-    ) -> Tuple[np.ndarray, Dict[str, float]]:
+    ):
         """
         Fit the model and evaluate on test set.
         
@@ -406,7 +405,7 @@ class LSTMForecaster:
         
         return predictions, metrics
 
-    def plot_diagnostics(self, save_path: Optional[str] = None):
+    def plot_diagnostics(self, save_path = None):
         """Plot training and validation loss history."""
         if not self.train_losses:
             raise ValueError("Model must be trained before plotting diagnostics")
@@ -426,7 +425,7 @@ class LSTMForecaster:
         
         plt.show()
 
-    def plot_actual_vs_predicted(self, predictions: Optional[np.ndarray] = None, save_path: Optional[str] = None):
+    def plot_actual_vs_predicted(self, predictions = None, save_path = None):
         """Plot actual vs predicted values on the test set."""
         if predictions is None:
             predictions = self.predict()
@@ -454,7 +453,7 @@ class LSTMForecaster:
         
         plt.show()
 
-    def plot_future_forecast(self, n_steps: int = 30, start_date: Optional[str] = None, save_path: Optional[str] = None):
+    def plot_future_forecast(self, n_steps = 30, start_date = None, save_path = None):
         """Plot future forecast starting from the end of the test data or a specified date."""
         if start_date is None:
             start_date = str(self.test_data.index[-1] + pd.Timedelta(days=1))

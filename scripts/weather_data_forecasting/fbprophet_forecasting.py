@@ -1,12 +1,4 @@
 from pathlib import Path
-
-# Suppress the specific warning
-import warnings
-from statsmodels.tools.sm_exceptions import ValueWarning
-warnings.filterwarnings("ignore", category=ValueWarning, module="statsmodels.tsa.base.tsa_model")
-
-from pathlib import Path
-from typing import Optional, Tuple, Union, Dict
 import matplotlib.pyplot as plt
 
 import pandas as pd
@@ -14,6 +6,10 @@ import numpy as np
 from prophet import Prophet
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
+# Suppress the specific warning
+import warnings
+from statsmodels.tools.sm_exceptions import ValueWarning
+warnings.filterwarnings("ignore", category=ValueWarning, module="statsmodels.tsa.base.tsa_model")
 
 class ProphetForecaster:
     """
@@ -32,14 +28,14 @@ class ProphetForecaster:
     
     def __init__(
         self,
-        train_path: Union[str, Path],
-        val_path: Union[str, Path],
-        test_path: Union[str, Path],
-        target_col: str = 'cups_sold',
-        seasonality_mode: str = 'additive',
-        yearly_seasonality: bool = True,
-        weekly_seasonality: bool = True,
-        daily_seasonality: bool = False
+        train_path,
+        val_path,
+        test_path,
+        target_col = 'cups_sold',
+        seasonality_mode = 'additive',
+        yearly_seasonality = True,
+        weekly_seasonality = True,
+        daily_seasonality = False
     ) -> None:
         """
         Initialize the Prophet forecaster.
@@ -54,25 +50,25 @@ class ProphetForecaster:
             weekly_seasonality: Whether to include weekly seasonality (recommended: True)
             daily_seasonality: Whether to include daily seasonality
         """
-        self.train_path: Path = Path(train_path)
-        self.val_path: Path = Path(val_path)
-        self.test_path: Path = Path(test_path)
-        self.target_col: str = target_col
-        self.seasonality_mode: str = seasonality_mode
-        self.yearly_seasonality: bool = yearly_seasonality
-        self.weekly_seasonality: bool = weekly_seasonality
-        self.daily_seasonality: bool = daily_seasonality
+        self.train_path = Path(train_path)
+        self.val_path = Path(val_path)
+        self.test_path = Path(test_path)
+        self.target_col = target_col
+        self.seasonality_mode = seasonality_mode
+        self.yearly_seasonality = yearly_seasonality
+        self.weekly_seasonality = weekly_seasonality
+        self.daily_seasonality = daily_seasonality
         
-        self.train_data: Optional[pd.DataFrame] = None
-        self.val_data: Optional[pd.DataFrame] = None
-        self.test_data: Optional[pd.DataFrame] = None
-        self.train_val_data: Optional[pd.DataFrame] = None
-        self.model: Optional[Prophet] = None
-        self.residuals: Optional[np.ndarray] = None  # For diagnostics
+        self.train_data = None
+        self.val_data = None
+        self.test_data = None
+        self.train_val_data = None
+        self.model = None
+        self.residuals = None  # For diagnostics
         
         self.load_data()
     
-    def load_data(self) -> None:
+    def load_data(self):
         """Load and preprocess data."""
         self.train_data = pd.read_csv(self.train_path)
         self.val_data = pd.read_csv(self.val_path)
@@ -86,17 +82,17 @@ class ProphetForecaster:
         # Combine train and val for fitting
         self.train_val_data = pd.concat([self.train_data, self.val_data])
     
-    def prepare_prophet_data(self, df: pd.DataFrame) -> pd.DataFrame:
+    def prepare_prophet_data(self, df):
         """Prepare data for Prophet (ds, y columns)."""
         prophet_df = df.reset_index().rename(columns={'date': 'ds', self.target_col: 'y'})
         return prophet_df[['ds', 'y']]
     
     def train(
         self,
-        growth: str = 'linear',
-        changepoint_prior_scale: float = 0.05,
-        seasonality_prior_scale: float = 10.0,
-        verbose: bool = False
+        growth = 'linear',
+        changepoint_prior_scale = 0.05,
+        seasonality_prior_scale = 10.0,
+        verbose = False
     ) -> None:
         """Train the Prophet model on combined train+val data."""
         import logging
@@ -121,7 +117,7 @@ class ProphetForecaster:
         actual = train_prophet['y'].values
         self.residuals = actual - forecast['yhat'].values
     
-    def predict(self) -> np.ndarray:
+    def predict(self):
         """Generate predictions on test set."""
         if self.model is None:
             raise ValueError("Model must be trained before predicting")
@@ -130,7 +126,7 @@ class ProphetForecaster:
         forecast = self.model.predict(test_prophet)
         return forecast['yhat'].values
     
-    def forecast_future(self, n_steps: int, start_date: str) -> pd.DataFrame:
+    def forecast_future(self, n_steps, start_date):
         """
         Forecast future values.
         
@@ -155,7 +151,7 @@ class ProphetForecaster:
             'upper_bound': forecast['yhat_upper']
         })
     
-    def evaluate(self, predictions: Optional[np.ndarray] = None) -> Dict[str, float]:
+    def evaluate(self, predictions = None):
         """
         Evaluate model performance on test set.
         
@@ -189,10 +185,10 @@ class ProphetForecaster:
     def fit_and_evaluate(
         self,
         growth: str = 'linear',
-        changepoint_prior_scale: float = 0.05,
-        seasonality_prior_scale: float = 10.0,
+        changepoint_prior_scale = 0.05,
+        seasonality_prior_scale = 10.0,
         verbose: bool = False
-    ) -> Tuple[np.ndarray, Dict[str, float]]:
+    ):
         """
         Fit the model and evaluate on test set.
         
@@ -210,7 +206,7 @@ class ProphetForecaster:
         
         return predictions, metrics
     
-    def plot_components(self, save_path: Optional[str] = None) -> None:
+    def plot_components(self, save_path = None):
         """Plot the forecast components (trend, seasonality, etc.)."""
         if self.model is None:
             raise ValueError("Model must be trained before plotting")
@@ -226,7 +222,7 @@ class ProphetForecaster:
             print(f"Components plot saved to {save_path}")
         plt.show()
     
-    def plot_forecast(self, save_path: Optional[str] = None) -> None:
+    def plot_forecast(self, save_path = None):
         """Plot the forecast with actual data."""
         if self.model is None:
             raise ValueError("Model must be trained before plotting")
@@ -245,7 +241,7 @@ class ProphetForecaster:
             print(f"Forecast plot saved to {save_path}")
         plt.show()
     
-    def plot_diagnostics(self, save_path: Optional[str] = None):
+    def plot_diagnostics(self, save_path = None):
         """Plot model diagnostics (residuals histogram)."""
         if self.residuals is None:
             raise ValueError("Model must be trained before plotting diagnostics")
@@ -263,7 +259,7 @@ class ProphetForecaster:
         
         plt.show()
 
-    def plot_actual_vs_predicted(self, predictions: Optional[np.ndarray] = None, save_path: Optional[str] = None):
+    def plot_actual_vs_predicted(self, predictions = None, save_path = None):
         """Plot actual vs predicted values on the test set."""
         if predictions is None:
             predictions = self.predict()
@@ -291,7 +287,7 @@ class ProphetForecaster:
         
         plt.show()
 
-    def plot_future_forecast(self, n_steps: int = 30, start_date: Optional[str] = None, save_path: Optional[str] = None):
+    def plot_future_forecast(self, n_steps, start_date = None, save_path = None):
         """Plot future forecast with uncertainty."""
         if start_date is None:
             start_date = str(self.test_data.index[-1] + pd.Timedelta(days=1))

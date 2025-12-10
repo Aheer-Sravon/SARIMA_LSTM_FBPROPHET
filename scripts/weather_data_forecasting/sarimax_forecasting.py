@@ -1,5 +1,13 @@
 import warnings
 from statsmodels.tools.sm_exceptions import ValueWarning, ConvergenceWarning
+from pathlib import Path
+import pandas as pd
+import numpy as np
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+from itertools import product
+from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 # Suppress convergence and value warnings by category
 warnings.filterwarnings("ignore", category=ValueWarning)
@@ -9,16 +17,6 @@ warnings.filterwarnings("ignore", category=ConvergenceWarning)
 warnings.filterwarnings("ignore", message="Non-stationary starting autoregressive parameters found.*")
 warnings.filterwarnings("ignore", message="Non-invertible starting MA parameters found.*")
 
-from pathlib import Path
-from typing import Optional, Tuple, List, Union, Dict, Any
-import pandas as pd
-import numpy as np
-from statsmodels.tsa.statespace.sarimax import SARIMAX
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-from itertools import product
-from tqdm import tqdm
-
-import matplotlib.pyplot as plt
 
 class SARIMAXForecaster:
     """
@@ -43,12 +41,12 @@ class SARIMAXForecaster:
    
     def __init__(
         self,
-        train_path: Union[str, Path],
-        val_path: Union[str, Path],
-        test_path: Union[str, Path],
-        target_col: str = 'cups_sold',
-        exog_cols: Optional[List[str]] = None
-    ) -> None:
+        train_path,
+        val_path,
+        test_path,
+        target_col = 'cups_sold',
+        exog_cols = None
+    ):
         """
         Initialize the SARIMAX forecaster.
        
@@ -59,29 +57,29 @@ class SARIMAXForecaster:
             target_col: Name of the target column to forecast
             exog_cols: List of exogenous variable column names (default: ['weekday_num'])
         """
-        self.train_path: Path = Path(train_path)
-        self.val_path: Path = Path(val_path)
-        self.test_path: Path = Path(test_path)
-        self.target_col: str = target_col
-        self.exog_cols: List[str] = exog_cols if exog_cols is not None else ['weekday_num']
+        self.train_path = Path(train_path)
+        self.val_path = Path(val_path)
+        self.test_path = Path(test_path)
+        self.target_col = target_col
+        self.exog_cols = exog_cols if exog_cols is not None else ['weekday_num']
        
-        self.train_data: Optional[pd.DataFrame] = None
-        self.val_data: Optional[pd.DataFrame] = None
-        self.test_data: Optional[pd.DataFrame] = None
-        self.train_val_data: Optional[pd.DataFrame] = None
-        self.full_data: Optional[pd.DataFrame] = None
-        self.target: Optional[pd.Series] = None
-        self.exog: Optional[pd.DataFrame] = None
-        self.full_exog: Optional[pd.DataFrame] = None
+        self.train_data = None
+        self.val_data = None
+        self.test_data = None
+        self.train_val_data = None
+        self.full_data = None
+        self.target = None
+        self.exog = None
+        self.full_exog = None
        
-        self.best_order: Optional[Tuple[int, int, int]] = None
-        self.best_s_order: Optional[Tuple[int, int, int, int]] = None
-        self.model: Optional[SARIMAX] = None
-        self.res: Optional[Any] = None
+        self.best_order = None
+        self.best_s_order = None
+        self.model = None
+        self.res = None
        
         self.load_data()
    
-    def load_data(self) -> None:
+    def load_data(self):
         """Load and preprocess training, validation, and test data."""
         self.train_data = pd.read_csv(self.train_path)
         self.val_data = pd.read_csv(self.val_path)
@@ -106,15 +104,15 @@ class SARIMAXForecaster:
    
     def optimize(
         self,
-        p_range: range = range(0, 3),  # Smaller default for efficiency
-        q_range: range = range(0, 3),
-        P_range: range = range(0, 3),
-        Q_range: range = range(0, 3),
+        p_range = range(0, 3),  # Smaller default for efficiency
+        q_range = range(0, 3),
+        P_range = range(0, 3),
+        Q_range = range(0, 3),
         d: int = 0,
         D: int = 0,
         s: int = 7,
-        verbose: bool = True
-    ) -> None:
+        verbose = True
+    ):
         """
         Optimize SARIMAX parameters using grid search and AIC.
         Based on notebook: tests all combinations of (p, q, P, Q) with fixed d=0, D=0, s=7
@@ -130,7 +128,7 @@ class SARIMAXForecaster:
             verbose: Whether to show progress bar
         """
         parameters = list(product(p_range, q_range, P_range, Q_range))
-        results: List[List[Union[Tuple[int, int, int, int], float]]] = []
+        results = []
        
         iterator = tqdm(parameters, desc="Optimizing SARIMAX") if verbose else parameters
        
@@ -144,15 +142,15 @@ class SARIMAXForecaster:
                     simple_differencing=False
                 )
                 res = model.fit(disp=False, maxiter=500, method='nm')  # Better convergence
-                aic: float = res.aic
+                aic = res.aic
                 results.append([param, aic])
             except Exception:
                 continue
        
         if results:
-            result_df: pd.DataFrame = pd.DataFrame(results, columns=['params', 'aic'])
+            result_df = pd.DataFrame(results, columns=['params', 'aic'])
             result_df = result_df.sort_values('aic').reset_index(drop=True)
-            best_param: Tuple[int, int, int, int] = result_df['params'].iloc[0]
+            best_param = result_df['params'].iloc[0]
            
             self.best_order = (best_param[0], d, best_param[1])
             self.best_s_order = (best_param[2], D, best_param[3], s)
@@ -161,10 +159,10 @@ class SARIMAXForecaster:
                 print(f"\nBest order: {self.best_order}")
                 print(f"Best seasonal order: {self.best_s_order}")
                 print(f"Best AIC: {result_df['aic'].iloc[0]:.2f}")
-                print(f"\nTop 5 parameter combinations:")
+                print("\nTop 5 parameter combinations:")
                 print(result_df.head())
    
-    def train(self) -> None:
+    def train(self):
         """Train the SARIMAX model with optimized parameters."""
         if self.best_order is None or self.best_s_order is None:
             self.optimize()
@@ -179,7 +177,7 @@ class SARIMAXForecaster:
             )
             self.res = self.model.fit(disp=False, maxiter=500, method='nm')  # Better convergence
    
-    def predict(self, window: int = 1) -> List[float]:
+    def predict(self, window: int = 1):
         """
         Generate predictions for test set using recursive forecasting.
         Based on notebook's recursive_forecast function.
@@ -193,12 +191,12 @@ class SARIMAXForecaster:
         if self.best_order is None or self.best_s_order is None:
             raise ValueError("Model must be optimized before making predictions")
        
-        full_target: pd.Series = self.full_data[self.target_col]
-        train_len: int = len(self.train_val_data)
-        horizon: int = len(self.test_data)
-        total_len: int = train_len + horizon
+        full_target = self.full_data[self.target_col]
+        train_len = len(self.train_val_data)
+        horizon = len(self.test_data)
+        total_len = train_len + horizon
        
-        predictions: List[float] = []
+        predictions = []
        
         # Recursive forecasting
         for i in range(train_len, total_len, window):
@@ -226,7 +224,7 @@ class SARIMAXForecaster:
         # Trim to exact horizon length
         return predictions[:horizon]
    
-    def forecast_future(self, n_steps: int, start_date: str, exog_future: pd.DataFrame) -> pd.DataFrame:
+    def forecast_future(self, n_steps, start_date, exog_future):
         """
         Forecast future values with exogenous variables.
        
@@ -257,7 +255,7 @@ class SARIMAXForecaster:
             'predicted_cups_sold': predictions
         })
    
-    def evaluate(self, predictions: Optional[List[float]] = None) -> Dict[str, float]:
+    def evaluate(self, predictions = None):
         """
         Evaluate model performance on test set.
        
@@ -273,12 +271,12 @@ class SARIMAXForecaster:
         actual: np.ndarray = self.test_data[self.target_col].values
         predictions_array = np.array(predictions)
        
-        mae: float = mean_absolute_error(actual, predictions_array)
-        rmse: float = np.sqrt(mean_squared_error(actual, predictions_array))
+        mae = mean_absolute_error(actual, predictions_array)
+        rmse = np.sqrt(mean_squared_error(actual, predictions_array))
 
         non_zero_mask = actual != 0
         if np.any(non_zero_mask):
-            mape: float = np.mean(
+            mape = np.mean(
                 np.abs((actual[non_zero_mask] - predictions_array[non_zero_mask]) / 
                 actual[non_zero_mask])
             ) * 100
@@ -291,7 +289,7 @@ class SARIMAXForecaster:
             'MAPE': mape
         }
    
-    def fit_and_evaluate(self, verbose: bool = True) -> Tuple[List[float], Dict[str, float]]:
+    def fit_and_evaluate(self, verbose):
         """
         Fit the model and evaluate on test set.
        
@@ -311,7 +309,7 @@ class SARIMAXForecaster:
             return "Model not yet trained"
         return str(self.res.summary())
 
-    def plot_diagnostics(self, save_path: Optional[str] = None):
+    def plot_diagnostics(self, save_path = None):
         """Plot model diagnostics (residuals, etc.)."""
         if self.res is None:
             raise ValueError("Model must be trained before plotting diagnostics")
@@ -323,7 +321,7 @@ class SARIMAXForecaster:
 
         plt.show()
 
-    def plot_actual_vs_predicted(self, predictions: Optional[List[float]] = None, save_path: Optional[str] = None):
+    def plot_actual_vs_predicted(self, predictions = None, save_path = None):
         """Plot actual vs predicted values on the test set."""
         if predictions is None:
             predictions = self.predict()
@@ -351,7 +349,7 @@ class SARIMAXForecaster:
 
         plt.show()
 
-    def plot_future_forecast(self, n_steps: int = 30, exog_future: Optional[pd.DataFrame] = None, start_date: Optional[str] = None, save_path: Optional[str] = None):
+    def plot_future_forecast(self, n_steps = 30, exog_future = None, start_date = None, save_path = None):
         """Plot future forecast. Provide exog_future with required columns (e.g., 'weekday_num')."""
         if start_date is None:
             start_date = str(self.test_data.index[-1] + pd.Timedelta(days=1))
@@ -370,8 +368,6 @@ class SARIMAXForecaster:
             print(f"Future Forecast plot saved to {save_path}")
 
         plt.show()
-
-import pandas as pd
 
 # Instantiate and run
 model = SARIMAXForecaster(
