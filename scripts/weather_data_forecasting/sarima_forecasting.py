@@ -90,11 +90,11 @@ class SARIMAForecaster:
 
     def optimize(
         self,
-        p_range = range(0, 3),  # Smaller default for efficiency
-        q_range = range(0, 3),
-        P_range = range(0, 3),
-        Q_range = range(0, 3),
-        d = 1,
+        p_range = range(0, 6),  # Smaller default for efficiency
+        q_range = range(0, 6),
+        P_range = range(0, 6),
+        Q_range = range(0, 6),
+        d = 0,
         D = 0,
         s = 7,
         verbose = True
@@ -125,7 +125,7 @@ class SARIMAForecaster:
                     seasonal_order=(param[2], D, param[3], s),
                     simple_differencing=False
                 )
-                res = model.fit(disp=False, maxiter=500, method='nm')  # Better convergence
+                res = model.fit(disp=False, maxiter=500)  # Better convergence
                 aic: float = res.aic
                 results.append([param, aic])
             except Exception:
@@ -158,11 +158,12 @@ class SARIMAForecaster:
                 seasonal_order=self.best_s_order,
                 simple_differencing=False
             )
-            self.res = self.model.fit(disp=False, maxiter=500, method='nm')  # Better convergence
+            self.res = self.model.fit(disp=False, maxiter=500)
 
     def predict(self):
         """
-        Generate predictions for test set using recursive forecasting.
+        Generate predictions for test set using in-sample prediction.
+        Uses single model fit (fast, like original script).
         
         Returns:
             List of predictions for test period
@@ -170,27 +171,19 @@ class SARIMAForecaster:
         if self.best_order is None or self.best_s_order is None:
             raise ValueError("Model must be optimized before making predictions")
         
-        full_target = self.full[self.target_col]
+        if self.res is None:
+            self.fit()
+        
         train_len = len(self.train_val)
         horizon = len(self.test_data)
-        predictions = []
         
-        for i in range(train_len, train_len + horizon):
-            try:
-                model = SARIMAX(
-                    full_target[:i],
-                    order=self.best_order,
-                    seasonal_order=self.best_s_order,
-                    simple_differencing=False
-                )
-                res = model.fit(disp=False, maxiter=500, method='nm')
-                pred: float = res.get_forecast(steps=1).predicted_mean.iloc[0]
-                predictions.append(pred)
-            except Exception as e:
-                print(f"Warning: Prediction failed at step {i}: {e}")
-                predictions.append(predictions[-1] if predictions else 0.0)
+        # In-sample prediction (like original script)
+        predictions = self.res.get_prediction(
+            start=train_len,
+            end=train_len + horizon - 1
+        )
         
-        return predictions
+        return predictions.predicted_mean.values
 
     def evaluate(self, predictions = None):
         """
@@ -309,7 +302,7 @@ class SARIMAForecaster:
             print(f"Actual vs Predicted plot saved to {save_path}")
         plt.show()
 
-    def plot_future_forecast(self, n_steps: int = 30, start_date: Optional[str] = None, save_path: Optional[str] = None):
+    def plot_future_forecast(self, n_steps = 30, start_date = None, save_path = None):
         """Plot future forecast starting from the end of the test data or a specified date."""
         if start_date is None:
             start_date = str(self.test_data.index[-1] + pd.Timedelta(days=1))
@@ -333,7 +326,7 @@ model = SARIMAForecaster(
 )
 
 # Optimize with smaller ranges if needed
-model.optimize(p_range=range(0, 4), verbose=True)
+model.optimize(p_range=range(0, 6), verbose=True)
 
 model.fit()
 

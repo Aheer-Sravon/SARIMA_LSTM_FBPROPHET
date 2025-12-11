@@ -2,11 +2,18 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 import torch
+import random
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import matplotlib.pyplot as plt
+
+SEED = 250
+
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
 
 
 class TimeSeriesDataset(Dataset):
@@ -64,6 +71,7 @@ class LSTMModel(nn.Module):
             hidden_size=hidden_sizes[2],
             batch_first=True
         )
+        self.bn3 = nn.BatchNorm1d(hidden_sizes[2])
         self.dropout3 = nn.Dropout(dropout_rates[2])
         
         # Output layer
@@ -86,16 +94,17 @@ class LSTMModel(nn.Module):
         lstm_out = lstm_out.permute(0, 2, 1)
         lstm_out = self.dropout2(lstm_out)
         
-        # Third LSTM layer
+        # Third LSTM layer - ADD BATCHNORM
         lstm_out, _ = self.lstm3(lstm_out)
+        lstm_out = lstm_out.permute(0, 2, 1)  # (batch, hidden, seq)
+        lstm_out = self.bn3(lstm_out)  # ADD THIS LINE
+        lstm_out = lstm_out.permute(0, 2, 1)  # back to (batch, seq, hidden)
         lstm_out = self.dropout3(lstm_out)
         
-        # Take last timestep for prediction
         last_timestep = lstm_out[:, -1, :]
         out = self.fc(last_timestep)
         
         return out
-
 
 class LSTMForecaster:
     """
@@ -176,26 +185,53 @@ class LSTMForecaster:
         self._prepare_sequences()
     
     def _prepare_sequences(self):
-        """Prepare input sequences with weekday feature."""
+        """Prepare input sequences with weekday feature (matching original algorithm)."""
         full_data = pd.concat([self.train_val_data, self.test_data])
-        full_data['weekday_norm'] = full_data.index.weekday / 6.0  # Normalize 0-6 to 0-1
         
-        # Scale target
+        # CRITICAL CHANGE 1: Use weekday_num column instead of index.weekday
+        # This matches the original which uses df['weekday_num'] column
+        if 'weekday_num' in full_data.columns:
+            full_data['weekday_norm'] = full_data['weekday_num'] / 6.0  # Normalize 0-6 to 0-1
+        else:
+            # Fallback to index if column doesn't exist (should exist for exact match)
+            full_data['weekday_norm'] = full_data.index.weekday / 6.0
+        
+        # Scale target - CRITICAL CHANGE 2: Fit scaler on train_val only, transform all
+        # Original fits scaler on entire dataset (cups_sold_scaled = scaler_y.fit_transform(df[['cups_sold']]))
+        # But for evaluation consistency, we fit on train_val and transform all
         y_scaled = self.scaler_y.transform(full_data[[self.target_col]])
         
-        # Combine scaled target and weekday
+        # Combine scaled target and weekday (exact same as original)
         features = np.hstack([y_scaled, full_data[['weekday_norm']].values])
         
-        # Create sequences
+        # Create sequences (exact same algorithm as original)
         X, y = [], []
         for i in range(len(features) - self.seq_length):
             X.append(features[i:i+self.seq_length])
-            y.append(y_scaled[i+self.seq_length, 0])  # Predict next cups_sold
+            # CRITICAL CHANGE 3: Use full y_scaled, not just first column
+            # Original uses y_data.append(y[i + window_size]) where y is 2D array
+            # But actually both should be same since y_scaled is 2D
+            y.append(y_scaled[i+self.seq_length])  # Predict next cups_sold (2D array)
         
         X = np.array(X)
-        y = np.array(y).reshape(-1, 1)
+        y = np.array(y)  # shape: (n, 1) - this is correct
         
-        # Split back
+        # ALTERNATIVE: If you want 80/10/10 split like original (instead of separate files)
+        # Remove the split code below and use this instead:
+        """
+        # 80/10/10 split like original algorithm
+        train_size = int(len(X) * 0.8)
+        val_size = int(len(X) * 0.1)
+        
+        self.X_train = X[:train_size]
+        self.y_train = y[:train_size]
+        self.X_val = X[train_size:train_size + val_size]
+        self.y_val = y[train_size:train_size + val_size]
+        self.X_test = X[train_size + val_size:]
+        self.y_test = y[train_size + val_size:]
+        """
+        
+        # Keep your current split if using separate files
         train_end = len(self.train_data)
         val_end = train_end + len(self.val_data)
         
@@ -211,9 +247,9 @@ class LSTMForecaster:
     def train(
         self,
         epochs = 100,
-        batch_size = 32,
+        batch_size = 16,
         learning_rate = 0.0005,
-        patience = 15,
+        patience = 10,
         verbose = True
     ):
         """Train the LSTM model with early stopping."""
@@ -221,6 +257,9 @@ class LSTMForecaster:
         
         self.model = LSTMModel(input_size=input_size).to(self.device)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-6
+        )
         criterion = nn.MSELoss()
         
         train_dataset = TimeSeriesDataset(self.X_train, self.y_train)
@@ -264,6 +303,7 @@ class LSTMForecaster:
             
             val_loss /= len(val_loader.dataset)
             self.val_losses.append(val_loss)
+            scheduler.step(val_loss)
             
             if verbose and (epoch + 1) % 10 == 0:
                 print(f"Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
@@ -478,7 +518,7 @@ model = LSTMForecaster(
 )
 
 # Train the model (equivalent to optimize + train in SARIMAX)
-model.train(epochs=100, batch_size=32, learning_rate=0.0005, patience=15, verbose=True)
+model.train(epochs=100, batch_size=16, learning_rate=0.0005, patience=10, verbose=True)
 
 # Plot diagnostics after fitting
 model.plot_diagnostics(save_path=Path(__file__).parent.parent.parent / 'figures' / 'weather_forecast_plots' / 'lstm_diagnostics_plot.png')
@@ -496,7 +536,7 @@ model.plot_actual_vs_predicted(
 
 # Future forecast example (no exogenous variables needed for LSTM, uses recursive with weekdays)
 future_preds = model.forecast_future(
-    n_steps=5,
+    n_steps=7,
     start_date='2025-02-08'
 )
 print(future_preds)

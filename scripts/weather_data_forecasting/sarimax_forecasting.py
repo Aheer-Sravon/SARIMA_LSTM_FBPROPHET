@@ -104,10 +104,10 @@ class SARIMAXForecaster:
    
     def optimize(
         self,
-        p_range = range(0, 3),  # Smaller default for efficiency
-        q_range = range(0, 3),
-        P_range = range(0, 3),
-        Q_range = range(0, 3),
+        p_range = range(0, 6),
+        q_range = range(0, 6),
+        P_range = range(0, 6),
+        Q_range = range(0, 6),
         d: int = 0,
         D: int = 0,
         s: int = 7,
@@ -141,7 +141,7 @@ class SARIMAXForecaster:
                     seasonal_order=(param[2], D, param[3], s),
                     simple_differencing=False
                 )
-                res = model.fit(disp=False, maxiter=500, method='nm')  # Better convergence
+                res = model.fit(disp=False, maxiter=500)  # Better convergence
                 aic = res.aic
                 results.append([param, aic])
             except Exception:
@@ -175,55 +175,34 @@ class SARIMAXForecaster:
                 seasonal_order=self.best_s_order,
                 simple_differencing=False
             )
-            self.res = self.model.fit(disp=False, maxiter=500, method='nm')  # Better convergence
+            self.res = self.model.fit(disp=False, maxiter=500)  # Better convergence
    
-    def predict(self, window: int = 1):
+    def predict(self):
         """
-        Generate predictions for test set using recursive forecasting.
-        Based on notebook's recursive_forecast function.
-       
-        Args:
-            window: Step size for recursive forecasting (default: 1)
-       
-        Returns:
-            List of predictions for test period
+        Generate predictions for test set using in-sample prediction.
+        Single model fit (like original script).
         """
         if self.best_order is None or self.best_s_order is None:
             raise ValueError("Model must be optimized before making predictions")
-       
-        full_target = self.full_data[self.target_col]
+
+        if self.res is None:
+            self.train()
+
         train_len = len(self.train_val_data)
         horizon = len(self.test_data)
-        total_len = train_len + horizon
-       
-        predictions = []
-       
-        # Recursive forecasting
-        for i in range(train_len, total_len, window):
-            try:
-                model = SARIMAX(
-                    full_target[:i],
-                    exog=self.full_exog[:i],
-                    order=self.best_order,
-                    seasonal_order=self.best_s_order,
-                    simple_differencing=False
-                )
-                res = model.fit(disp=False, maxiter=500, method='nm')
-               
-                # Corrected: Use get_forecast for out-of-sample predictions
-                oos_exog = self.full_exog[i:i+window]
-                oos_pred = res.get_forecast(steps=len(oos_exog), exog=oos_exog).predicted_mean.values
-                predictions.extend(oos_pred)
-               
-            except Exception as e:
-                print(f"Warning: Prediction failed at step {i}: {e}")
-                # Append repeated value for window size
-                last_pred = predictions[-1] if predictions else 0.0
-                predictions.extend([last_pred] * min(window, total_len - i))
-       
-        # Trim to exact horizon length
-        return predictions[:horizon]
-   
+
+        # Get exogenous variables for test period
+        test_exog = self.full_exog.iloc[train_len:train_len + horizon]
+
+        # In-sample prediction (like original script)
+        predictions = self.res.get_prediction(
+            start=train_len,
+            end=train_len + horizon - 1,
+            exog=test_exog
+        )
+
+        return predictions.predicted_mean.values
+
     def forecast_future(self, n_steps, start_date, exog_future):
         """
         Forecast future values with exogenous variables.
@@ -377,7 +356,7 @@ model = SARIMAXForecaster(
 )
 
 # Optimize with smaller ranges if needed
-model.optimize(p_range=range(0, 4), verbose=True)
+model.optimize(p_range=range(0, 6), verbose=True)
 
 model.train()
 
