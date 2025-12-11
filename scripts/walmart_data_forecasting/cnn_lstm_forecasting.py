@@ -1,9 +1,12 @@
 import warnings
 from sklearn.preprocessing import MinMaxScaler
-from pathlib import Path
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, Dataset
 import pandas as pd
-from typing import Optional, Tuple
 import numpy as np
+from pathlib import Path
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 import matplotlib.pyplot as plt
 plt.ion()
 
@@ -11,17 +14,6 @@ plt.ion()
 warnings.filterwarnings("ignore")
 
 NUM_STORES = 5
-
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, Dataset
-import pandas as pd
-import numpy as np
-from pathlib import Path
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-import matplotlib.pyplot as plt
-
 
 class TimeSeriesDataset(Dataset):
     """PyTorch Dataset for time series data."""
@@ -106,7 +98,6 @@ class CNNLSTMModel(nn.Module):
         
         return out
 
-
 class CNNLSTMForecaster:
     """
     CNN-LSTM forecaster for cups_sold prediction using PyTorch.
@@ -120,7 +111,7 @@ class CNNLSTMForecaster:
     """
     
     def __init__(self, train_path, val_path, test_path, 
-                 target_col='cups_sold', seq_length=7):
+                 target_col='weekly_sales', seq_length=7, exog_cols=None):
         """
         Initialize the CNN-LSTM forecaster.
         
@@ -130,12 +121,14 @@ class CNNLSTMForecaster:
             test_path: Path to test CSV file
             target_col: Name of the target column to forecast
             seq_length: Length of input sequences (default: 7 for weekly)
+            exog_cols: List of exogenous feature columns (optional)
         """
         self.train_path = Path(train_path)
         self.val_path = Path(val_path)
         self.test_path = Path(test_path)
         self.target_col = target_col
         self.seq_length = seq_length
+        self.exog_cols = exog_cols if exog_cols is not None else []
         
         self.train_data = None
         self.val_data = None
@@ -143,6 +136,7 @@ class CNNLSTMForecaster:
         self.train_val_data = None
         
         self.scaler_y = MinMaxScaler()
+        self.scaler_exog = {}
         self.model = None
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
@@ -178,7 +172,7 @@ class CNNLSTMForecaster:
         self.train_val_data = pd.concat([self.train_data, self.val_data])
     
     def prepare_data(self):
-        """Prepare input sequences with weekday feature."""
+        """Prepare input sequences with weekday feature and exogenous features."""
         # Combine all data for sequence creation
         full_data = pd.concat([self.train_val_data, self.test_data])
         
@@ -196,13 +190,28 @@ class CNNLSTMForecaster:
         y_scaled = self.scaler_y.transform(full_data[[self.target_col]])
         
         # Combine scaled target and weekday
-        features = np.hstack([y_scaled, full_data[['weekday_norm']].values])
+        features_list = [y_scaled, full_data[['weekday_norm']].values]
+        
+        # Add scaled exogenous features if provided
+        if self.exog_cols:
+            self.scaler_exog = {}
+            for col in self.exog_cols:
+                if col in full_data.columns:
+                    scaler = MinMaxScaler()
+                    train_val_exog = self.train_val_data[[col]].values
+                    scaler.fit(train_val_exog)
+                    self.scaler_exog[col] = scaler
+                    exog_scaled = scaler.transform(full_data[[col]].values)
+                    features_list.append(exog_scaled)
+        
+        # Combine all features
+        features = np.hstack(features_list)
         
         # Create sequences
         X, y = [], []
         for i in range(len(features) - self.seq_length):
             X.append(features[i:i+self.seq_length])
-            y.append(y_scaled[i+self.seq_length, 0])  # Predict next cups_sold
+            y.append(y_scaled[i+self.seq_length, 0])  # Predict next target value
         
         X = np.array(X)
         y = np.array(y).reshape(-1, 1)
@@ -308,13 +317,14 @@ class CNNLSTMForecaster:
         predictions = np.array(predictions)
         return self.scaler_y.inverse_transform(predictions.reshape(-1, 1)).flatten()
     
-    def forecast_future(self, n_steps, start_date):
+    def forecast_future(self, n_steps, start_date, exog_future=None):
         """
         Forecast future values using recursive prediction.
         
         Args:
             n_steps: Number of steps to forecast
             start_date: Start date for forecast (format: 'YYYY-MM-DD')
+            exog_future: DataFrame with future exogenous values (optional)
         
         Returns:
             DataFrame with forecasted values
@@ -355,7 +365,16 @@ class CNNLSTMForecaster:
             last_weekdays = np.tile(np.arange(7) / 6.0, 
                                     self.seq_length // 7 + 1)[:self.seq_length]
         
+        # Start with base features (target + weekday)
         current_window = np.hstack([last_window_scaled, last_weekdays.reshape(-1, 1)])
+        
+        # Add last exogenous features if available
+        if self.exog_cols:
+            for col in self.exog_cols:
+                if col in full_data.columns and col in self.scaler_exog:
+                    exog_values = full_data[col].values[-self.seq_length:]
+                    exog_scaled = self.scaler_exog[col].transform(exog_values.reshape(-1, 1))
+                    current_window = np.hstack([current_window, exog_scaled])
         
         predictions = []
         self.model.eval()
@@ -372,14 +391,28 @@ class CNNLSTMForecaster:
             pred = self.scaler_y.inverse_transform([[pred_scaled]])[0, 0]
             predictions.append(pred)
             
-            # Update window
-            weekday_norm = future_weekdays[i]
-            new_step = np.array([[pred_scaled, weekday_norm]])
+            # Create new step with predicted target + weekday
+            new_step = [[pred_scaled, future_weekdays[i]]]
+            
+            # Add exogenous values for this step if available
+            if self.exog_cols:
+                for col in self.exog_cols:
+                    if col in self.scaler_exog:
+                        if exog_future is not None and i < len(exog_future) and col in exog_future.columns:
+                            exog_val = exog_future.iloc[i][col]
+                            exog_scaled = self.scaler_exog[col].transform([[exog_val]])[0, 0]
+                        else:
+                            # If no future exog, repeat the last one from training data
+                            exog_val = full_data[col].values[-1]
+                            exog_scaled = self.scaler_exog[col].transform([[exog_val]])[0, 0]
+                        new_step[0].append(exog_scaled)
+            
+            new_step = np.array(new_step)
             current_window = np.vstack([current_window[1:], new_step])
         
         return pd.DataFrame({
             'date': future_dates,
-            'predicted_cups_sold': predictions
+            'predicted_weekly_sales': predictions  # Use correct column name
         })
     
     def evaluate(self, predictions=None):
@@ -446,38 +479,47 @@ class CNNLSTMForecaster:
             print(f"Diagnostics plot saved to {save_path}")
         
         plt.show()
+        plt.pause(5)
+        plt.close()
     
-    def plot_actual_vs_predicted(self, predictions=None, save_path=None):
-        """Plot actual vs predicted values on the test set."""
+    def plot_actual_vs_predicted(self, predictions=None, fig_save_path=None, csv_save_path=None):
+        """Plot actual vs predicted values on the test set.
+        
+        Args:
+            predictions: Pre-computed predictions (if None, will compute them)
+            fig_save_path: Path to save the figure (optional)
+            csv_save_path: Path to save the CSV data (optional)
+        """
         if predictions is None:
             predictions = self.predict()
         
         test_dates = self.test_data.index
         actual = self.test_data[self.target_col].values
         
-        # Save to CSV if path ends with .csv
-        if save_path and save_path.endswith('.csv'):
-            pd.DataFrame({
-                'Date': test_dates,
-                'Actual': actual,
-                'Predicted': predictions
-            }).to_csv(save_path, index=False)
-            print(f"Actual vs Predicted data saved to {save_path}")
+        # Save to CSV if csv_save_path is provided
+        pd.DataFrame({
+            'Date': test_dates,
+            'Actual': actual,
+            'Predicted': predictions
+        }).to_csv(csv_save_path, index=False)
         
         plt.figure(figsize=(12, 6))
         plt.plot(test_dates, actual, label='Actual', color='blue')
         plt.plot(test_dates, predictions, label='Predicted', color='orange')
         plt.xlabel('Date')
-        plt.ylabel('Cups Sold')
-        plt.title('Actual vs Predicted Cups Sold (CNN-LSTM)')
+        plt.ylabel('Weekly Sales' if self.target_col == 'weekly_sales' else 'Cups Sold')
+        plt.title('Actual vs Predicted (CNN-LSTM)')
         plt.legend()
         plt.grid(True)
         
-        if save_path and not save_path.endswith('.csv'):
-            plt.savefig(save_path)
-            print(f"Actual vs Predicted plot saved to {save_path}")
+        # Save figure if fig_save_path is provided
+        if fig_save_path:
+            plt.savefig(fig_save_path)
+            print(f"Actual vs Predicted plot saved to {fig_save_path}")
         
         plt.show()
+        plt.pause(5)
+        plt.close()
     
     def plot_future_forecast(self, n_steps=30, start_date=None, save_path=None):
         """Plot future forecast starting from the end of the test data or a specified date."""
@@ -494,9 +536,9 @@ class CNNLSTMForecaster:
         forecast_df = self.forecast_future(n_steps, start_date)
         
         plt.figure(figsize=(12, 6))
-        plt.plot(forecast_df['date'], forecast_df['predicted_cups_sold'], label='Forecast', color='green')
+        plt.plot(forecast_df['date'], forecast_df['predicted_weekly_sales'], label='Forecast', color='green')
         plt.xlabel('Date')
-        plt.ylabel('Predicted Cups Sold')
+        plt.ylabel('Predicted Weekly Sales')
         plt.title('Future Forecast (CNN-LSTM)')
         plt.grid(True)
         
@@ -505,6 +547,8 @@ class CNNLSTMForecaster:
             print(f"Future Forecast plot saved to {save_path}")
         
         plt.show()
+        plt.pause(5)
+        plt.close()
 
 # Define paths
 base_data_path = Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'walmart'
@@ -581,25 +625,30 @@ for store in range(1, NUM_STORES + 1):
     
     # Plot actual vs predicted
     avp_path = base_fig_path / f'cnn_lstm_actual_vs_predicted_{store}.png'
-    model.plot_actual_vs_predicted(predictions, save_path=avp_path)
+    model.plot_actual_vs_predicted(predictions, fig_save_path=avp_path, csv_save_path=f"../log/walmart_cnn_lstm_actual_vs_predicted_{store}.csv")
     
     # Future forecast example
     # Use last exog values repeated for future
-    exog_last = model.test_data[model.exog_cols].iloc[-1]
-    exog_future = pd.DataFrame([exog_last] * 5, columns=model.exog_cols)
-    
-    future_preds = model.forecast_future(
-        n_steps=5,
-        start_date='2012-11-02',
-        exog_future=exog_future
-    )
+    if hasattr(model, 'exog_cols') and model.exog_cols:
+        exog_last = model.test_data[model.exog_cols].iloc[-1]
+        exog_future = pd.DataFrame([exog_last] * 5, columns=model.exog_cols)
+        
+        future_preds = model.forecast_future(
+            n_steps=5,
+            start_date='2012-11-02',
+            exog_future=exog_future
+        )
+    else:
+        future_preds = model.forecast_future(
+            n_steps=5,
+            start_date='2012-11-02'
+        )
     print(f"\nStore {store} future predictions:\n{future_preds}")
-    
+
     # Plot future forecast
     ff_path = base_fig_path / f'cnn_lstm_future_forecast_{store}.png'
     model.plot_future_forecast(
         n_steps=5,
-        exog_future=exog_future,
         start_date='2012-11-02',
         save_path=ff_path
     )
