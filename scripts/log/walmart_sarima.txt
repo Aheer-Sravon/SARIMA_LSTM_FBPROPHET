@@ -2,129 +2,51 @@ For store: 1
 
 Best order: (1, 1, 1)
 Best seasonal order: (0, 0, 0, 7)
-Best AIC: 3056.45
+Best AIC: 2470.66
 
 Top 5 parameter combinations:
          params          aic
-0  (1, 1, 0, 0)  3056.446337
-1  (1, 1, 1, 0)  3058.261468
-2  (2, 1, 0, 0)  3058.445907
-3  (2, 1, 1, 0)  3060.243266
-4  (0, 1, 0, 0)  3064.020931
+0  (1, 1, 0, 0)  2470.662323
+1  (2, 1, 0, 0)  2472.620128
+2  (1, 1, 1, 0)  2472.635752
+3  (0, 1, 0, 0)  2475.421345
+4  (2, 0, 0, 0)  2477.327427
 Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_diagnostics_plot_1.png
 
-Store 1 metrics: {'MAE': 81477.67247252307, 'RMSE': np.float64(94141.39264747969), 'MAPE': np.float64(5.189131890346013)}
+Store 1 metrics: {'MAE': 129720.81929874449, 'RMSE': np.float64(175619.87881677426), 'MAPE': np.float64(7.8352698757626404)}
 Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_actual_vs_predicted_1.png
 
 Store 1 future predictions:
         date  predicted_weekly_sales
-0 2012-11-02            1.759186e+06
-1 2012-11-09            1.700418e+06
-2 2012-11-16            1.675835e+06
-3 2012-11-23            1.665552e+06
-4 2012-11-30            1.661251e+06
+0 2012-11-02            1.562389e+06
+1 2012-11-09            1.546721e+06
+2 2012-11-16            1.539179e+06
+3 2012-11-23            1.535549e+06
+4 2012-11-30            1.533801e+06
 Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_future_forecast_1.png
-For store: 2
-
-Best order: (1, 1, 1)
-Best seasonal order: (0, 0, 0, 7)
-Best AIC: 3144.66
-
-Top 5 parameter combinations:
-         params          aic
-0  (1, 1, 0, 0)  3144.657738
-1  (2, 1, 0, 0)  3145.964704
-2  (1, 1, 1, 0)  3146.472369
-3  (2, 1, 1, 0)  3147.625132
-4  (0, 1, 0, 0)  3151.992542
-Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_diagnostics_plot_2.png
-
-Store 2 metrics: {'MAE': 68607.7492759827, 'RMSE': np.float64(81675.9931816229), 'MAPE': np.float64(3.629060313277426)}
-Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_actual_vs_predicted_2.png
-
-Store 2 future predictions:
-        date  predicted_weekly_sales
-0 2012-11-02            2.014615e+06
-1 2012-11-09            1.958271e+06
-2 2012-11-16            1.930526e+06
-3 2012-11-23            1.916863e+06
-4 2012-11-30            1.910135e+06
-Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_future_forecast_2.png
 For store: 3
 
 Best order: (1, 1, 1)
 Best seasonal order: (0, 0, 0, 7)
-Best AIC: 2745.20
+Best AIC: 2221.30
 
 Top 5 parameter combinations:
          params          aic
-0  (1, 1, 0, 0)  2745.196021
-1  (1, 1, 1, 0)  2746.140340
-2  (0, 1, 0, 0)  2748.109022
-3  (2, 0, 0, 0)  2748.482301
-4  (0, 1, 1, 0)  2749.043254
+0  (1, 1, 0, 0)  2221.295819
+1  (0, 1, 0, 0)  2221.582553
+2  (2, 1, 0, 0)  2222.313913
+3  (2, 0, 0, 0)  2222.832347
+4  (1, 1, 1, 0)  2222.896551
 Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_diagnostics_plot_3.png
 
-Store 3 metrics: {'MAE': 16331.998245173947, 'RMSE': np.float64(21329.823454748526), 'MAPE': np.float64(3.9402701945961875)}
+Store 3 metrics: {'MAE': 28164.337637524397, 'RMSE': np.float64(41221.08653933238), 'MAPE': np.float64(6.403821568755487)}
 Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_actual_vs_predicted_3.png
 
 Store 3 future predictions:
         date  predicted_weekly_sales
-0 2012-11-02           474751.149514
-1 2012-11-09           459284.434374
-2 2012-11-16           450885.170265
-3 2012-11-23           446323.914888
-4 2012-11-30           443846.906148
+0 2012-11-02           401845.242087
+1 2012-11-09           398675.808347
+2 2012-11-16           396978.680994
+3 2012-11-23           396069.925207
+4 2012-11-30           395583.316421
 Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_future_forecast_3.png
-For store: 4
-
-Best order: (1, 1, 1)
-Best seasonal order: (0, 0, 0, 7)
-Best AIC: 3159.62
-
-Top 5 parameter combinations:
-         params          aic
-0  (1, 1, 0, 0)  3159.615379
-1  (1, 1, 1, 0)  3161.540820
-2  (2, 1, 0, 0)  3161.603822
-3  (2, 1, 1, 0)  3163.518131
-4  (0, 1, 0, 0)  3166.975263
-Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_diagnostics_plot_4.png
-
-Store 4 metrics: {'MAE': 63806.25087080288, 'RMSE': np.float64(80618.50462561751), 'MAPE': np.float64(2.9956915363752197)}
-Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_actual_vs_predicted_4.png
-
-Store 4 future predictions:
-        date  predicted_weekly_sales
-0 2012-11-02            2.339205e+06
-1 2012-11-09            2.288688e+06
-2 2012-11-16            2.269207e+06
-3 2012-11-23            2.261695e+06
-4 2012-11-30            2.258799e+06
-Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_future_forecast_4.png
-For store: 5
-
-Best order: (1, 1, 1)
-Best seasonal order: (0, 0, 0, 7)
-Best AIC: 2724.63
-
-Top 5 parameter combinations:
-         params          aic
-0  (1, 1, 0, 0)  2724.634209
-1  (0, 1, 0, 0)  2725.394842
-2  (2, 1, 0, 0)  2725.784420
-3  (1, 1, 1, 0)  2726.614688
-4  (0, 1, 1, 0)  2727.357756
-Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_diagnostics_plot_5.png
-
-Store 5 metrics: {'MAE': 13075.477025784226, 'RMSE': np.float64(16021.51616337292), 'MAPE': np.float64(3.9880923995694046)}
-Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_actual_vs_predicted_5.png
-
-Store 5 future predictions:
-        date  predicted_weekly_sales
-0 2012-11-02           369656.508938
-1 2012-11-09           357084.161748
-2 2012-11-16           352341.654990
-3 2012-11-23           350552.699435
-4 2012-11-30           349877.874465
-Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/sarima_future_forecast_5.png

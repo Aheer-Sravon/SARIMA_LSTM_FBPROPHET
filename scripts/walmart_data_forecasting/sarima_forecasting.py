@@ -34,30 +34,17 @@ class SARIMAForecaster:
     def __init__(
         self, 
         train_path,
-        val_path,
         test_path,
-        target_col = 'cups_sold',
-        frequency = 'W-FRI'
+        target_col='weekly_sales',
+        frequency='W-FRI'
     ):
-        """
-        Initialize the SARIMA forecaster.
-        
-        Args:
-            train_path: Path to training CSV file
-            val_path: Path to validation CSV file
-            test_path: Path to test CSV file
-            target_col: Name of the target column to forecast
-            frequency: Time series frequency ('D' for daily, 'W-FRI' for weekly, etc.)
-        """
         self.train_path = Path(train_path)
-        self.val_path = Path(val_path)
         self.test_path = Path(test_path)
         self.target_col = target_col
         self.frequency = frequency
         
         self.train_data = None
-        self.val_data = None
-        self.test_data = None
+        self.test_data = None  # Removed val_data
         self.train_val = None
         self.full = None
         self.target = None
@@ -70,13 +57,12 @@ class SARIMAForecaster:
         self.load_data()
 
     def load_data(self):
-        """Load and preprocess training, validation, and test data."""
+        """Load and preprocess training and test data."""
         self.train_data = pd.read_csv(self.train_path)
-        self.val_data = pd.read_csv(self.val_path)
         self.test_data = pd.read_csv(self.test_path)
         
         # Parse date column and set as index
-        for df_name in ['train_data', 'val_data', 'test_data']:
+        for df_name in ['train_data', 'test_data']:  # Removed 'val_data'
             df = getattr(self, df_name)
             df['date'] = pd.to_datetime(df['date'])
             df.set_index('date', inplace=True)
@@ -89,8 +75,8 @@ class SARIMAForecaster:
                 df = df.asfreq('D').ffill()
                 setattr(self, df_name, df)
         
-        # Combine train and validation for model training
-        self.train_val = pd.concat([self.train_data, self.val_data]).sort_index()
+        # Use train data directly (no validation)
+        self.train_val = self.train_data
         
         # Combine all data for sequential prediction
         self.full = pd.concat([self.train_val, self.test_data]).sort_index()
@@ -303,7 +289,7 @@ class SARIMAForecaster:
         else:
             plt.show()
 
-    def plot_actual_vs_predicted(self, predictions = None, save_path = None):
+    def plot_actual_vs_predicted(self, predictions = None, fig_save_path = None, csv_save_path = None):
         """Plot actual vs predicted values on the test set."""
         if predictions is None:
             predictions = self.predict()
@@ -317,7 +303,7 @@ class SARIMAForecaster:
             'Actual': actual.values,
             'Predicted': predictions
         })
-        result_df.to_csv("../log/weather_sarima_actual_vs_predicted.csv")
+        result_df.to_csv(csv_save_path)
         
         # Determine labels based on frequency
         title = 'Actual vs Predicted Weekly Sales (SARIMA)'
@@ -331,9 +317,9 @@ class SARIMAForecaster:
         plt.legend()
         plt.grid(True)
         
-        if save_path:
-            plt.savefig(save_path)
-            print(f"Actual vs Predicted plot saved to {save_path}")
+        if fig_save_path:
+            plt.savefig(fig_save_path)
+            print(f"Actual vs Predicted plot saved to {fig_save_path}")
         
         # Handle display based on frequency
         if self.frequency.startswith('W'):
@@ -384,7 +370,7 @@ df = pd.read_csv(
 )
 
 # Process for the first 5 stores
-stores = [1, 2, 3, 4, 5]
+stores = [1, 3]
 base_data_path = Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'walmart'
 base_fig_path = Path(__file__).parent.parent.parent / 'figures' / 'walmart_forecast_plots'
 
@@ -397,29 +383,25 @@ for store in stores:
     df_store = df_store.sort_values('Date')
     df_store.rename(columns={'Date': 'date', 'Weekly_Sales': 'weekly_sales'}, inplace=True)
     
-    # Split the data chronologically
+    # Split the data chronologically - LAST 50 points for testing
     n = len(df_store)
-    train_size = int(0.7 * n)
-    val_size = int(0.1 * n)
-    test_size = n - train_size - val_size
-    
+    test_size = 50  # Fixed 50 test points
+    train_size = n - test_size
+
     train = df_store.iloc[:train_size]
-    val = df_store.iloc[train_size:train_size + val_size]
-    test = df_store.iloc[train_size + val_size:]
-    
+    test = df_store.iloc[train_size:]
+
+    # Skip validation split entirely
     # Save splits to CSV files for the store
     train_path = base_data_path / f'train_{store}.csv'
-    val_path = base_data_path / f'validation_{store}.csv'
     test_path = base_data_path / f'test_{store}.csv'
-    
+
     train.to_csv(train_path, index=False)
-    val.to_csv(val_path, index=False)
     test.to_csv(test_path, index=False)
-    
+
     # Instantiate and run for this store
     model = SARIMAForecaster(
         train_path=train_path,
-        val_path=val_path,
         test_path=test_path,
         target_col='weekly_sales'
     )
@@ -449,7 +431,7 @@ for store in stores:
     
     # Plot actual vs predicted
     avp_path = base_fig_path / f'sarima_actual_vs_predicted_{store}.png'
-    model.plot_actual_vs_predicted(predictions, save_path=avp_path)
+    model.plot_actual_vs_predicted(predictions, fig_save_path=avp_path, csv_save_path=f"../log/walmart_sarima_actual_vs_predicted_{store}.csv")
     
     # Future forecast example (no exogenous variables for SARIMA)
     future_preds = model.forecast_future(

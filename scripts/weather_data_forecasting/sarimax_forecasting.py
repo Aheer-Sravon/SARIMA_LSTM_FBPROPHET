@@ -12,8 +12,6 @@ import matplotlib.pyplot as plt
 # Suppress convergence and value warnings by category
 warnings.filterwarnings("ignore", category=ValueWarning)
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
-
-# Suppress specific UserWarnings by message (using regex to match exactly)
 warnings.filterwarnings("ignore", message="Non-stationary starting autoregressive parameters found.*")
 warnings.filterwarnings("ignore", message="Non-invertible starting MA parameters found.*")
 

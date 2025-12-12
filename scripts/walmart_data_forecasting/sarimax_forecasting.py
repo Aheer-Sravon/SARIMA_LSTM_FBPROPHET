@@ -8,17 +8,15 @@ from itertools import product
 from tqdm import tqdm
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from sklearn.metrics import mean_absolute_error, mean_squared_error
-plt.ion()
 
 warnings.filterwarnings("ignore", category=ValueWarning)
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 warnings.filterwarnings("ignore", message="Non-stationary starting autoregressive parameters found.*")
 warnings.filterwarnings("ignore", message="Non-invertible starting MA parameters found.*")
 warnings.filterwarnings("ignore", message="Non-stationary starting seasonal autoregressive.*")
-
-
 warnings.filterwarnings("ignore")
 
+plt.ion()
 
 class SARIMAXForecaster:
     """
@@ -30,14 +28,12 @@ class SARIMAXForecaster:
     def __init__(
         self,
         train_path,
-        val_path,
         test_path,
-        target_col='cups_sold',
+        target_col='weekly_sales',
         frequency='D',
         exog_cols=None
     ):
         self.train_path = Path(train_path)
-        self.val_path = Path(val_path)
         self.test_path = Path(test_path)
         self.target_col = target_col
         self.frequency = frequency
@@ -53,7 +49,6 @@ class SARIMAXForecaster:
         
         # Data attributes
         self.train_data = None
-        self.val_data = None
         self.test_data = None
         self.train_val = None
         self.full_data = None
@@ -72,11 +67,10 @@ class SARIMAXForecaster:
     def load_data(self):
         """Load and preprocess training, validation, and test data."""
         self.train_data = pd.read_csv(self.train_path)
-        self.val_data = pd.read_csv(self.val_path)
         self.test_data = pd.read_csv(self.test_path)
         
         # Parse date column and set as index
-        for df in [self.train_data, self.val_data, self.test_data]:
+        for df in [self.train_data, self.test_data]:
             df['date'] = pd.to_datetime(df['date'])
             df.set_index('date', inplace=True)
             
@@ -86,7 +80,7 @@ class SARIMAXForecaster:
                 df = df.asfreq('W-FRI')
         
         # Combine train and validation
-        self.train_val = pd.concat([self.train_data, self.val_data]).sort_index()
+        self.train_val = self.train_data
         
         # Combine all data
         self.full_data = pd.concat([self.train_val, self.test_data]).sort_index()
@@ -314,7 +308,7 @@ class SARIMAXForecaster:
         else:
             plt.show()
     
-    def plot_actual_vs_predicted(self, predictions=None, save_path=None):
+    def plot_actual_vs_predicted(self, predictions=None, fig_save_path=None, csv_save_path=None):
         """Plot actual vs predicted values on the test set."""
         if predictions is None:
             predictions = self.predict()
@@ -325,18 +319,12 @@ class SARIMAXForecaster:
         # Create results directory if it doesn't exist
         Path("../log").mkdir(exist_ok=True)
         
-        # Save to CSV
-        if self.frequency == 'D':
-            csv_path = "../log/weather_sarimax_actual_vs_predicted.csv"
-        else:
-            csv_path = "../log/walmart_sarimax_actual_vs_predicted.csv"
-        
         result_df = pd.DataFrame({
             'Date': test_dates,
             'Actual': actual.values,
             'Predicted': predictions
         })
-        result_df.to_csv(csv_path, index=False)
+        result_df.to_csv(csv_save_path, index=False)
         
         # Plot
         plt.figure(figsize=(12, 6))
@@ -355,9 +343,9 @@ class SARIMAXForecaster:
         plt.legend()
         plt.grid(True)
         
-        if save_path:
-            plt.savefig(save_path)
-            print(f"Actual vs Predicted plot saved to {save_path}")
+        if fig_save_path:
+            plt.savefig(fig_save_path)
+            print(f"Actual vs Predicted plot saved to {fig_save_path}")
         
         if self.frequency == 'W-FRI':
             plt.pause(10)
@@ -404,7 +392,7 @@ class SARIMAXForecaster:
 df = pd.read_csv(Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'walmart' / 'walmart.csv')
 
 # Process for the first 5 stores
-stores = [1, 2, 3, 4, 5]
+stores = [1, 3]
 base_data_path = Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'walmart'
 base_fig_path = Path(__file__).parent.parent.parent / 'figures' / 'walmart_forecast_plots'
 
@@ -416,31 +404,27 @@ for store in stores:
     df_store = df_store.sort_values('Date')
     df_store.rename(columns={'Date': 'date', 'Weekly_Sales': 'weekly_sales'}, inplace=True)
     
-    # Split the data chronologically
+    # Split the data chronologically - LAST 50 points for testing
     n = len(df_store)
-    train_size = int(0.7 * n)
-    val_size = int(0.1 * n)
-    test_size = n - train_size - val_size
-    
+    test_size = 50  # Fixed 50 test points
+    train_size = n - test_size
+
     train = df_store.iloc[:train_size]
-    val = df_store.iloc[train_size:train_size + val_size]
-    test = df_store.iloc[train_size + val_size:]
-    
-    # Save splits to CSV files for the store
+    test = df_store.iloc[train_size:]
+
+    # Save splits to CSV files for the store (NO VALIDATION)
     train_path = base_data_path / f'train_{store}.csv'
-    val_path = base_data_path / f'validation_{store}.csv'
     test_path = base_data_path / f'test_{store}.csv'
-    
+
     train.to_csv(train_path, index=False)
-    val.to_csv(val_path, index=False)
     test.to_csv(test_path, index=False)
     
-    # Instantiate and run for this store
+    # Instantiate and run for this store (NO VALIDATION PATH)
     model = SARIMAXForecaster(
         train_path=train_path,
-        val_path=val_path,
-        test_path=test_path,
+        test_path=test_path,  # Only train and test
         target_col='weekly_sales',
+        exog_cols=['Holiday_Flag', 'Temperature', 'Fuel_Price', 'CPI', 'Unemployment'],
         frequency='W-FRI'
     )
     
@@ -469,7 +453,7 @@ for store in stores:
     
     # Plot actual vs predicted
     avp_path = base_fig_path / f'sarimax_actual_vs_predicted_{store}.png'
-    model.plot_actual_vs_predicted(predictions, save_path=avp_path)
+    model.plot_actual_vs_predicted(predictions, fig_save_path=avp_path, csv_save_path=f"../log/walmart_sarimax_actual_vs_predicted_{store}.csv")
     
     # Future forecast example
     # Use last exog values repeated for future

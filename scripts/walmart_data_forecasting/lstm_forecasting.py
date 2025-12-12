@@ -108,15 +108,13 @@ class LSTMForecaster:
     def __init__(
         self,
         train_path,
-        val_path,
         test_path,
-        target_col='cups_sold',
+        target_col='weekly_sales',
         frequency='D',
         seq_length=7,
         exog_cols=None
     ):
         self.train_path = Path(train_path)
-        self.val_path = Path(val_path)
         self.test_path = Path(test_path)
         self.target_col = target_col
         self.frequency = frequency
@@ -163,11 +161,10 @@ class LSTMForecaster:
     def load_data(self):
         """Load and preprocess data."""
         self.train_data = pd.read_csv(self.train_path)
-        self.val_data = pd.read_csv(self.val_path)
-        self.test_data = pd.read_csv(self.test_path)
+        self.test_data = pd.read_csv(self.test_path)  # Changed: removed val_data
         
         # Parse dates and set frequency
-        for df in [self.train_data, self.val_data, self.test_data]:
+        for df in [self.train_data, self.test_data]:  # Removed val_data
             df['date'] = pd.to_datetime(df['date'])
             df.set_index('date', inplace=True)
             
@@ -177,8 +174,8 @@ class LSTMForecaster:
             else:  # Weekly
                 df = df.asfreq('W-FRI')
         
-        # Combine train and val for scaling
-        self.train_val_data = pd.concat([self.train_data, self.val_data]).sort_index()
+        # No validation, use all train data for training
+        self.train_val_data = self.train_data  # Changed
         
         # Full data for reference
         self.full_data = pd.concat([self.train_val_data, self.test_data]).sort_index()
@@ -189,7 +186,7 @@ class LSTMForecaster:
     def _prepare_sequences(self):
         """Prepare input sequences with features."""
         # Get full data for sequence creation
-        full_data = pd.concat([self.train_val_data, self.test_data]).sort_index()
+        full_data = pd.concat([self.train_data, self.test_data]).sort_index()
         
         # Scale target
         y_scaled = self.scaler_y.fit_transform(full_data[[self.target_col]])
@@ -226,18 +223,21 @@ class LSTMForecaster:
         X = np.array(X)
         y = np.array(y).reshape(-1, 1)
         
-        # Split back to train/val/test
+        # Split to train/test only
         train_end = len(self.train_data)
-        val_end = train_end + len(self.val_data)
         
         self.X_train = X[:train_end - self.seq_length]
         self.y_train = y[:train_end - self.seq_length]
         
-        self.X_val = X[train_end - self.seq_length:val_end - self.seq_length]
-        self.y_val = y[train_end - self.seq_length:val_end - self.seq_length]
+        self.X_test = X[train_end - self.seq_length:]
+        self.y_test = y[train_end - self.seq_length:]
         
-        self.X_test = X[val_end - self.seq_length:]
-        self.y_test = y[val_end - self.seq_length:]
+        # For training, create validation split from training data (80/20)
+        val_size = int(0.2 * len(self.X_train))
+        self.X_val = self.X_train[:val_size]
+        self.y_val = self.y_train[:val_size]
+        self.X_train = self.X_train[val_size:]
+        self.y_train = self.y_train[val_size:]
     
     def train(
         self,
@@ -505,7 +505,7 @@ class LSTMForecaster:
         else:
             plt.show()
     
-    def plot_actual_vs_predicted(self, predictions=None, save_path=None):
+    def plot_actual_vs_predicted(self, predictions=None, fig_save_path=None, csv_save_path=None):
         """Plot actual vs predicted values on the test set."""
         if predictions is None:
             predictions = self.predict()
@@ -521,7 +521,7 @@ class LSTMForecaster:
             'Actual': actual,
             'Predicted': predictions
         })
-        result_df.to_csv("../log/walmart_lstm_actual_vs_predicted.csv", index=False)
+        result_df.to_csv(csv_save_path)
         
         # Plot
         plt.figure(figsize=(12, 6))
@@ -540,9 +540,9 @@ class LSTMForecaster:
         plt.legend()
         plt.grid(True)
         
-        if save_path:
-            plt.savefig(save_path)
-            print(f"Actual vs Predicted plot saved to {save_path}")
+        if fig_save_path:
+            plt.savefig(fig_save_path)
+            print(f"Actual vs Predicted plot saved to {fig_save_path}")
         
         if self.frequency == 'W-FRI':
             plt.pause(10)
@@ -595,7 +595,8 @@ base_fig_path.mkdir(parents=True, exist_ok=True)
 # Load and merge data
 df = pd.read_csv(base_data_path / 'walmart.csv')
 
-for store in range(1, NUM_STORES + 1):
+stores = [1, 3]
+for store in stores:
     print(f"For store: {store}")
     df_store = df[df['Store'] == store].copy()
     df_store['Date'] = pd.to_datetime(df_store['Date'], format='%d-%m-%Y')
@@ -612,29 +613,24 @@ for store in range(1, NUM_STORES + 1):
             agg_dict[md] = 'first'
     df_store = df_store.groupby('date').agg(agg_dict).reset_index()
     
-    # Split the data chronologically
+    # Split the data chronologically - LAST 50 points for testing
     n = len(df_store)
-    train_size = int(0.7 * n)
-    val_size = int(0.1 * n)
-    test_size = n - train_size - val_size
-    
+    test_size = 50  # Fixed 50 test points
+    train_size = n - test_size
+
     train = df_store.iloc[:train_size]
-    val = df_store.iloc[train_size:train_size + val_size]
-    test = df_store.iloc[train_size + val_size:]
-    
-    # Save splits to CSV files for the store
+    test = df_store.iloc[train_size:]
+
+# Save splits to CSV files for the store (NO VALIDATION)
     train_path = base_data_path / f'train_{store}.csv'
-    val_path = base_data_path / f'validation_{store}.csv'
     test_path = base_data_path / f'test_{store}.csv'
-    
+
     train.to_csv(train_path, index=False)
-    val.to_csv(val_path, index=False)
     test.to_csv(test_path, index=False)
     
     # Instantiate and run for this store
     model = LSTMForecaster(
         train_path=train_path,
-        val_path=val_path,
         test_path=test_path,
         frequency='W-FRI',
         target_col='weekly_sales',
@@ -661,7 +657,7 @@ for store in range(1, NUM_STORES + 1):
     
     # Plot actual vs predicted
     avp_path = base_fig_path / f'lstm_actual_vs_predicted_{store}.png'
-    model.plot_actual_vs_predicted(predictions, save_path=avp_path)
+    model.plot_actual_vs_predicted(predictions, fig_save_path=avp_path, csv_save_path=f"../log/walmart_lstm_actual_vs_predicted_{store}.csv")
     
     # Future forecast example
     # Use last exog values repeated for future
