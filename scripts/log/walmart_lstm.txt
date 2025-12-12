@@ -1,37 +1,33 @@
 For store: 1
-Epoch 10/100, Train Loss: 0.0184, Val Loss: 0.0165
-Epoch 20/100, Train Loss: 0.0171, Val Loss: 0.0085
-Epoch 30/100, Train Loss: 0.0153, Val Loss: 0.0330
-Epoch 40/100, Train Loss: 0.0123, Val Loss: 0.0945
-Early stopping at epoch 40
+Epoch 10/100, Train Loss: 0.0204, Val Loss: 0.0192
+Epoch 20/100, Train Loss: 0.0153, Val Loss: 0.0289
+Early stopping at epoch 29
 Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/lstm_diagnostics_plot_1.png
 
-Store 1 metrics: {'MAE': 122789.1804, 'RMSE': np.float64(181885.4332099714), 'MAPE': np.float64(7.046569077453674)}
+Store 1 metrics: {'MAE': 49342.00928571431, 'RMSE': np.float64(70325.58246212624), 'MAPE': np.float64(3.133544546109169)}
 Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/lstm_actual_vs_predicted_1.png
 
 Store 1 future predictions:
         date  predicted_weekly_sales
-0 2012-11-02            1.505731e+06
-1 2012-11-09            1.492793e+06
-2 2012-11-16            1.481762e+06
-3 2012-11-23            1.473953e+06
-4 2012-11-30            1.468316e+06
+0 2012-11-02            1.527329e+06
+1 2012-11-09            1.526347e+06
+2 2012-11-16            1.525120e+06
+3 2012-11-23            1.523710e+06
+4 2012-11-30            1.526207e+06
 Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/lstm_future_forecast_1.png
 For store: 3
-Epoch 10/100, Train Loss: 0.0213, Val Loss: 0.0168
-Epoch 20/100, Train Loss: 0.0175, Val Loss: 0.0085
-Epoch 30/100, Train Loss: 0.0139, Val Loss: 0.0346
-Early stopping at epoch 33
+Epoch 10/100, Train Loss: 0.0242, Val Loss: 0.0140
+Early stopping at epoch 16
 Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/lstm_diagnostics_plot_3.png
 
-Store 3 metrics: {'MAE': 50544.7139, 'RMSE': np.float64(64747.910630726125), 'MAPE': np.float64(11.125251008746703)}
+Store 3 metrics: {'MAE': 45025.35660714287, 'RMSE': np.float64(47633.9420989135), 'MAPE': np.float64(10.75883592621313)}
 Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/lstm_actual_vs_predicted_3.png
 
 Store 3 future predictions:
         date  predicted_weekly_sales
-0 2012-11-02           387684.831201
-1 2012-11-09           386921.078864
-2 2012-11-16           386542.477586
-3 2012-11-23           386028.021900
-4 2012-11-30           386364.450514
+0 2012-11-02           368774.321415
+1 2012-11-09           368750.462342
+2 2012-11-16           368717.743199
+3 2012-11-23           368688.092529
+4 2012-11-30           368663.495117
 Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/walmart_forecast_plots/lstm_future_forecast_3.png

@@ -359,7 +359,7 @@ for store in stores:
     model.train(
         growth='linear',
         changepoint_prior_scale=0.001,
-        seasonality_prior_scale=1.0,
+        seasonality_prior_scale=0.1,
         verbose=True
     )
     
