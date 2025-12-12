@@ -20,18 +20,15 @@ class ProphetForecaster:
     plus holiday effects.
     
     Attributes:
-        train_path: Path to training data CSV file
-        val_path: Path to validation data CSV file
-        test_path: Path to test data CSV file
+        data_path: Path to the full dataset CSV file
         model: Fitted Prophet model
     """
     
     def __init__(
         self,
-        train_path,
-        val_path,
-        test_path,
+        data_path,
         target_col = 'cups_sold',
+        test_size = 7,  # Last 7 days for testing
         seasonality_mode = 'additive',
         yearly_seasonality = True,
         weekly_seasonality = True,
@@ -41,46 +38,52 @@ class ProphetForecaster:
         Initialize the Prophet forecaster.
         
         Args:
-            train_path: Path to training CSV file
-            val_path: Path to validation CSV file
-            test_path: Path to test CSV file
+            data_path: Path to the full dataset CSV file
             target_col: Name of the target column to forecast
+            test_size: Number of last days to use for testing
             seasonality_mode: 'additive' or 'multiplicative'
             yearly_seasonality: Whether to include yearly seasonality
             weekly_seasonality: Whether to include weekly seasonality (recommended: True)
             daily_seasonality: Whether to include daily seasonality
         """
-        self.train_path = Path(train_path)
-        self.val_path = Path(val_path)
-        self.test_path = Path(test_path)
+        self.data_path = Path(data_path)
         self.target_col = target_col
+        self.test_size = test_size
         self.seasonality_mode = seasonality_mode
         self.yearly_seasonality = yearly_seasonality
         self.weekly_seasonality = weekly_seasonality
         self.daily_seasonality = daily_seasonality
         
+        self.full_data = None
         self.train_data = None
-        self.val_data = None
         self.test_data = None
-        self.train_val_data = None
         self.model = None
         self.residuals = None  # For diagnostics
         
-        self.load_data()
+        self.load_and_split_data()
     
-    def load_data(self):
-        """Load and preprocess data."""
-        self.train_data = pd.read_csv(self.train_path)
-        self.val_data = pd.read_csv(self.val_path)
-        self.test_data = pd.read_csv(self.test_path)
+    def load_and_split_data(self):
+        """Load the full dataset and split into train/test."""
+        self.full_data = pd.read_csv(self.data_path)
         
-        # Parse dates
-        for df in [self.train_data, self.val_data, self.test_data]:
-            df['date'] = pd.to_datetime(df['date'])
-            df.set_index('date', inplace=True)
+        # Parse dates and sort by date
+        self.full_data['date'] = pd.to_datetime(self.full_data['date'])
+        self.full_data = self.full_data.sort_values('date').reset_index(drop=True)
         
-        # Combine train and val for fitting
-        self.train_val_data = pd.concat([self.train_data, self.val_data])
+        # Split data: all except last 7 days for training, last 7 days for testing
+        train_size = len(self.full_data) - self.test_size
+        
+        # Train data (all except last 7 days)
+        self.train_data = self.full_data.iloc[:train_size].copy()
+        self.train_data.set_index('date', inplace=True)
+        
+        # Test data (last 7 days)
+        self.test_data = self.full_data.iloc[train_size:].copy()
+        self.test_data.set_index('date', inplace=True)
+        
+        print(f"Dataset loaded: {len(self.full_data)} total rows")
+        print(f"Train data: {len(self.train_data)} rows (all except last {self.test_size} days)")
+        print(f"Test data: {len(self.test_data)} rows (last {self.test_size} days)")
     
     def prepare_prophet_data(self, df):
         """Prepare data for Prophet (ds, y columns)."""
@@ -94,7 +97,7 @@ class ProphetForecaster:
         seasonality_prior_scale = 10.0,
         verbose = False
     ) -> None:
-        """Train the Prophet model on combined train+val data."""
+        """Train the Prophet model on training data."""
         import logging
         logging.getLogger('prophet').setLevel(logging.INFO if verbose else logging.WARNING)
         logging.getLogger('cmdstanpy').setLevel(logging.INFO if verbose else logging.WARNING)  # Also for backend
@@ -109,16 +112,18 @@ class ProphetForecaster:
             daily_seasonality=self.daily_seasonality
         )
         
-        train_prophet = self.prepare_prophet_data(self.train_val_data)
+        train_prophet = self.prepare_prophet_data(self.train_data)
         self.model.fit(train_prophet)  # No verbose here
         
         # Compute residuals for diagnostics
         forecast = self.model.predict(train_prophet)
         actual = train_prophet['y'].values
         self.residuals = actual - forecast['yhat'].values
+        
+        print(f"Model trained on {len(self.train_data)} days of data")
     
     def predict(self):
-        """Generate predictions on test set."""
+        """Generate predictions on test set (last 7 days)."""
         if self.model is None:
             raise ValueError("Model must be trained before predicting")
         
@@ -153,7 +158,7 @@ class ProphetForecaster:
     
     def evaluate(self, predictions = None):
         """
-        Evaluate model performance on test set.
+        Evaluate model performance on test set (last 7 days).
         
         Args:
             predictions: Pre-computed predictions (if None, will compute them)
@@ -174,7 +179,12 @@ class ProphetForecaster:
                 np.abs((actual[non_zero_mask] - predictions[non_zero_mask]) / actual[non_zero_mask])
             ) * 100
         else:
-            mape = float('nan')  # Or 0.0 if all zeros (adjust as needed)
+            mape = float('nan')
+        
+        print(f"Evaluation on last {self.test_size} days:")
+        print(f"  MAE: {mae:.2f}")
+        print(f"  RMSE: {rmse:.2f}")
+        print(f"  MAPE: {mape:.2f}%")
         
         return {
             'MAE': mae,
@@ -212,7 +222,7 @@ class ProphetForecaster:
             raise ValueError("Model must be trained before plotting")
         
         # Create future dataframe for plotting
-        future = self.model.make_future_dataframe(periods=len(self.test_data))
+        future = self.model.make_future_dataframe(periods=self.test_size)
         forecast = self.model.predict(future)
         
         # Plot components
@@ -228,7 +238,7 @@ class ProphetForecaster:
             raise ValueError("Model must be trained before plotting")
         
         # Prepare all data
-        all_data = pd.concat([self.train_val_data, self.test_data]).reset_index(drop=True)
+        all_data = pd.concat([self.train_data, self.test_data]).reset_index(drop=True)
         all_prophet = self.prepare_prophet_data(all_data)
         
         # Make forecast
@@ -266,20 +276,28 @@ class ProphetForecaster:
         test_dates = self.test_data.index
         actual = self.test_data[self.target_col].values
         
-        pd.DataFrame({
+        # Save predictions to CSV
+        pred_df = pd.DataFrame({
             'Date': test_dates,
             'Actual': actual,
             'Predicted': predictions
-        }).to_csv("../log/weather_fbprophet_actual_vs_predicted.csv")
+        })
+        pred_df.to_csv("../log/weather_fbprophet_actual_vs_predicted.csv", index=False)
+        print(f"Predictions saved to ../log/weather_fbprophet_actual_vs_predicted.csv")
         
         plt.figure(figsize=(12, 6))
-        plt.plot(test_dates, actual, label='Actual', color='blue')
-        plt.plot(test_dates, predictions, label='Predicted', color='orange')
+        plt.plot(test_dates, actual, label='Actual', color='blue', marker='o')
+        plt.plot(test_dates, predictions, label='Predicted', color='orange', marker='s')
         plt.xlabel('Date')
         plt.ylabel('Cups Sold')
-        plt.title('Actual vs Predicted Cups Sold (Prophet)')
+        plt.title(f'Actual vs Predicted Cups Sold (Prophet) - Last {self.test_size} Days')
         plt.legend()
         plt.grid(True)
+        
+        # Add value labels for the last 7 days
+        for i, (date, act, pred) in enumerate(zip(test_dates, actual, predictions)):
+            plt.text(date, act, f'{act:.0f}', ha='center', va='bottom')
+            plt.text(date, pred, f'{pred:.0f}', ha='center', va='top')
         
         if save_path:
             plt.savefig(save_path)
@@ -293,13 +311,17 @@ class ProphetForecaster:
             start_date = str(self.test_data.index[-1] + pd.Timedelta(days=1))
         forecast_df = self.forecast_future(n_steps, start_date)
         plt.figure(figsize=(12, 6))
-        plt.plot(forecast_df['date'], forecast_df['predicted_cups_sold'], label='Forecast', color='green')
+        plt.plot(forecast_df['date'], forecast_df['predicted_cups_sold'], label='Forecast', color='green', marker='o')
         plt.fill_between(forecast_df['date'], forecast_df['lower_bound'], forecast_df['upper_bound'], color='green', alpha=0.2, label='Uncertainty')
         plt.xlabel('Date')
         plt.ylabel('Predicted Cups Sold')
-        plt.title('Future Forecast (Prophet)')
+        plt.title(f'Future {n_steps}-Day Forecast (Prophet)')
         plt.legend()
         plt.grid(True)
+        
+        # Add value labels
+        for _, row in forecast_df.iterrows():
+            plt.text(row['date'], row['predicted_cups_sold'], f'{row["predicted_cups_sold"]:.0f}', ha='center', va='bottom')
         
         if save_path:
             plt.savefig(save_path)
@@ -309,12 +331,12 @@ class ProphetForecaster:
 
 # Instantiate and run
 model = ProphetForecaster(
-    train_path=Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'weather' / 'train.csv',
-    val_path=Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'weather' / 'validation.csv',
-    test_path=Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'weather' / 'test.csv'
+    data_path=Path(__file__).parent.parent.parent / 'data' / 'intermediate' / 'merged_daily_weather_all.csv',  # Update to your single dataset
+    target_col='cups_sold',
+    test_size=7
 )
 
-# Train the model (equivalent to optimize + train in SARIMAX)
+# Train the model
 model.train(
     growth='linear',
     changepoint_prior_scale=0.05,
@@ -327,25 +349,31 @@ model.plot_diagnostics(save_path=Path(__file__).parent.parent.parent / 'figures'
 
 predictions = model.predict()
 
+# Evaluate on the last 7 days
 metrics = model.evaluate(predictions)
-print(metrics)
+print("\nFinal Metrics:", metrics)
 
-# Plot actual vs predicted
+# Plot actual vs predicted for the last 7 days
 model.plot_actual_vs_predicted(
     predictions,
     save_path=Path(__file__).parent.parent.parent / 'figures' / 'weather_forecast_plots' / 'prophet_actual_vs_predicted.png'
 )
 
-# Future forecast example (no exogenous variables needed for Prophet)
+# Future forecast example
 future_preds = model.forecast_future(
     n_steps=5,
-    start_date='2025-02-08'
+    start_date=str(model.test_data.index[-1] + pd.Timedelta(days=1))  # Start from day after last test date
 )
+print("\nFuture Forecast:")
 print(future_preds)
 
 # Plot future forecast
 model.plot_future_forecast(
     n_steps=5,
-    start_date='2025-02-08',
+    start_date=str(model.test_data.index[-1] + pd.Timedelta(days=1)),
     save_path=Path(__file__).parent.parent.parent / 'figures' / 'weather_forecast_plots' / 'prophet_future_forecast.png'
 )
+
+# Optional: Show train/test split info
+print(f"\nTrain dates: {model.train_data.index[0]} to {model.train_data.index[-1]}")
+print(f"Test dates: {model.test_data.index[0]} to {model.test_data.index[-1]}")

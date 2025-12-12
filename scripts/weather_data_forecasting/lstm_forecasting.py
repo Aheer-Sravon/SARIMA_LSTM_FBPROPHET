@@ -94,11 +94,11 @@ class LSTMModel(nn.Module):
         lstm_out = lstm_out.permute(0, 2, 1)
         lstm_out = self.dropout2(lstm_out)
         
-        # Third LSTM layer - ADD BATCHNORM
+        # Third LSTM layer
         lstm_out, _ = self.lstm3(lstm_out)
-        lstm_out = lstm_out.permute(0, 2, 1)  # (batch, hidden, seq)
-        lstm_out = self.bn3(lstm_out)  # ADD THIS LINE
-        lstm_out = lstm_out.permute(0, 2, 1)  # back to (batch, seq, hidden)
+        lstm_out = lstm_out.permute(0, 2, 1)
+        lstm_out = self.bn3(lstm_out)
+        lstm_out = lstm_out.permute(0, 2, 1)
         lstm_out = self.dropout3(lstm_out)
         
         last_timestep = lstm_out[:, -1, :]
@@ -111,53 +111,45 @@ class LSTMForecaster:
     LSTM forecaster for cups_sold prediction using PyTorch.
     
     Attributes:
-        train_path: Path to training data CSV file
-        val_path: Path to validation data CSV file
-        test_path: Path to test data CSV file
+        data_path: Path to data CSV file
+        target_col: Name of the target column to forecast
         seq_length: Length of input sequences
-        model: LSTM model
+        test_size: Number of days to use for testing (default: 7)
     """
     
     def __init__(
         self,
-        train_path,
-        val_path,
-        test_path,
+        data_path,
         target_col = 'cups_sold',
-        seq_length = 7  # Weekly window
+        seq_length = 7,  # Weekly window
+        test_size = 7    # Last 7 days for testing
     ):
         """
         Initialize the LSTM forecaster.
         
         Args:
-            train_path: Path to training CSV file
-            val_path: Path to validation CSV file
-            test_path: Path to test CSV file
+            data_path: Path to data CSV file
             target_col: Name of the target column to forecast
             seq_length: Length of input sequences (default: 7 for weekly)
+            test_size: Number of days to use for testing (default: 7)
         """
-        self.train_path = Path(train_path)
-        self.val_path = Path(val_path)
-        self.test_path = Path(test_path)
+        self.data_path = Path(data_path)
         self.target_col = target_col
         self.seq_length = seq_length
+        self.test_size = test_size
         
+        self.data = None
         self.train_data = None
-        self.val_data = None
         self.test_data = None
-        self.train_val_data = None
         
         self.scaler_y = MinMaxScaler()
         self.model = None
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        self.train_losses = []  # Ensure initialized here
-        self.val_losses = []  # Ensure initialized here
+        self.train_losses = []
         
         self.X_train = None
         self.y_train = None
-        self.X_val = None
-        self.y_val = None
         self.X_test = None
         self.y_test = None
         
@@ -165,113 +157,83 @@ class LSTMForecaster:
     
     def load_data(self):
         """Load and preprocess data."""
-        self.train_data = pd.read_csv(self.train_path)
-        self.val_data = pd.read_csv(self.val_path)
-        self.test_data = pd.read_csv(self.test_path)
+        # Load single dataset
+        self.data = pd.read_csv(self.data_path)
         
         # Parse dates
-        for df in [self.train_data, self.val_data, self.test_data]:
-            df['date'] = pd.to_datetime(df['date'])
-            df.set_index('date', inplace=True)
+        self.data['date'] = pd.to_datetime(self.data['date'])
+        self.data.set_index('date', inplace=True)
         
-        # Combine train and val for scaling
-        self.train_val_data = pd.concat([self.train_data, self.val_data])
+        # Split data: all except last 7 days for training, last 7 days for testing
+        self.train_data = self.data.iloc[:-self.test_size]
+        self.test_data = self.data.iloc[-self.test_size:]
         
-        # Scale target
-        train_val_y = self.train_val_data[[self.target_col]].values
-        self.scaler_y.fit(train_val_y)
+        print(f"Training data: {len(self.train_data)} days")
+        print(f"Testing data: {len(self.test_data)} days")
         
-        # Prepare sequences with weekday_num
+        # Scale target using only training data
+        train_y = self.train_data[[self.target_col]].values
+        self.scaler_y.fit(train_y)
+        
+        # Prepare sequences
         self._prepare_sequences()
     
     def _prepare_sequences(self):
-        """Prepare input sequences with weekday feature (matching original algorithm)."""
-        full_data = pd.concat([self.train_val_data, self.test_data])
-        
-        # CRITICAL CHANGE 1: Use weekday_num column instead of index.weekday
-        # This matches the original which uses df['weekday_num'] column
-        if 'weekday_num' in full_data.columns:
-            full_data['weekday_norm'] = full_data['weekday_num'] / 6.0  # Normalize 0-6 to 0-1
+        """Prepare input sequences with weekday feature."""
+        # Create weekday_norm feature
+        if 'weekday_num' in self.data.columns:
+            self.data['weekday_norm'] = self.data['weekday_num'] / 6.0
         else:
-            # Fallback to index if column doesn't exist (should exist for exact match)
-            full_data['weekday_norm'] = full_data.index.weekday / 6.0
+            self.data['weekday_norm'] = self.data.index.weekday / 6.0
         
-        # Scale target - CRITICAL CHANGE 2: Fit scaler on train_val only, transform all
-        # Original fits scaler on entire dataset (cups_sold_scaled = scaler_y.fit_transform(df[['cups_sold']]))
-        # But for evaluation consistency, we fit on train_val and transform all
-        y_scaled = self.scaler_y.transform(full_data[[self.target_col]])
+        # Scale the target values for entire dataset
+        y_scaled = self.scaler_y.transform(self.data[[self.target_col]])
         
-        # Combine scaled target and weekday (exact same as original)
-        features = np.hstack([y_scaled, full_data[['weekday_norm']].values])
+        # Combine scaled target and weekday
+        features = np.hstack([y_scaled, self.data[['weekday_norm']].values])
         
-        # Create sequences (exact same algorithm as original)
+        # Create sequences
         X, y = [], []
         for i in range(len(features) - self.seq_length):
             X.append(features[i:i+self.seq_length])
-            # CRITICAL CHANGE 3: Use full y_scaled, not just first column
-            # Original uses y_data.append(y[i + window_size]) where y is 2D array
-            # But actually both should be same since y_scaled is 2D
-            y.append(y_scaled[i+self.seq_length])  # Predict next cups_sold (2D array)
+            y.append(y_scaled[i+self.seq_length])
         
         X = np.array(X)
-        y = np.array(y)  # shape: (n, 1) - this is correct
+        y = np.array(y)
         
-        # ALTERNATIVE: If you want 80/10/10 split like original (instead of separate files)
-        # Remove the split code below and use this instead:
-        """
-        # 80/10/10 split like original algorithm
-        train_size = int(len(X) * 0.8)
-        val_size = int(len(X) * 0.1)
+        # Split sequences into train and test
+        # Training: all sequences that don't use test data in their window
+        # Test: sequences that predict the last 7 days
+        train_end = len(self.train_data) - self.seq_length
+        test_start = len(self.data) - self.test_size - self.seq_length
         
-        self.X_train = X[:train_size]
-        self.y_train = y[:train_size]
-        self.X_val = X[train_size:train_size + val_size]
-        self.y_val = y[train_size:train_size + val_size]
-        self.X_test = X[train_size + val_size:]
-        self.y_test = y[train_size + val_size:]
-        """
+        self.X_train = X[:train_end]
+        self.y_train = y[:train_end]
         
-        # Keep your current split if using separate files
-        train_end = len(self.train_data)
-        val_end = train_end + len(self.val_data)
+        self.X_test = X[test_start:]
+        self.y_test = y[test_start:]
         
-        self.X_train = X[:train_end - self.seq_length]
-        self.y_train = y[:train_end - self.seq_length]
-        
-        self.X_val = X[train_end - self.seq_length:val_end - self.seq_length]
-        self.y_val = y[train_end - self.seq_length:val_end - self.seq_length]
-        
-        self.X_test = X[val_end - self.seq_length:]
-        self.y_test = y[val_end - self.seq_length:]
+        print(f"Training sequences: {len(self.X_train)}")
+        print(f"Testing sequences: {len(self.X_test)}")
     
     def train(
         self,
         epochs = 100,
         batch_size = 16,
         learning_rate = 0.0005,
-        patience = 10,
         verbose = True
     ):
-        """Train the LSTM model with early stopping."""
-        input_size = self.X_train.shape[2]  # features
+        """Train the LSTM model on all training data (no validation)."""
+        input_size = self.X_train.shape[2]
         
         self.model = LSTMModel(input_size=input_size).to(self.device)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-6
-        )
         criterion = nn.MSELoss()
         
         train_dataset = TimeSeriesDataset(self.X_train, self.y_train)
-        val_dataset = TimeSeriesDataset(self.X_val, self.y_val)
-        
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
         
         self.train_losses = []
-        self.val_losses = []
-        best_val_loss = float('inf')
-        patience_counter = 0
         
         for epoch in range(epochs):
             self.model.train()
@@ -291,40 +253,11 @@ class LSTMForecaster:
             train_loss /= len(train_loader.dataset)
             self.train_losses.append(train_loss)
             
-            # Validation
-            self.model.eval()
-            val_loss = 0.0
-            with torch.no_grad():
-                for X_batch, y_batch in val_loader:
-                    X_batch = X_batch.to(self.device)
-                    y_batch = y_batch.to(self.device)
-                    outputs = self.model(X_batch)
-                    val_loss += criterion(outputs, y_batch).item() * X_batch.size(0)
-            
-            val_loss /= len(val_loader.dataset)
-            self.val_losses.append(val_loss)
-            scheduler.step(val_loss)
-            
             if verbose and (epoch + 1) % 10 == 0:
-                print(f"Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
-            
-            # Early stopping
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                patience_counter = 0
-                torch.save(self.model.state_dict(), 'best_lstm_model.pth')
-            else:
-                patience_counter += 1
-                if patience_counter >= patience:
-                    if verbose:
-                        print(f"Early stopping at epoch {epoch+1}")
-                    break
-        
-        # Load best model
-        self.model.load_state_dict(torch.load('best_lstm_model.pth'))
+                print(f"Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}")
     
     def predict(self):
-        """Generate predictions on test set."""
+        """Generate predictions on test set (last 7 days)."""
         if self.model is None:
             raise ValueError("Model must be trained before predicting")
         
@@ -342,59 +275,9 @@ class LSTMForecaster:
         predictions = np.array(predictions)
         return self.scaler_y.inverse_transform(predictions.reshape(-1, 1)).flatten()
     
-    def forecast_future(self, n_steps, start_date):
+    def evaluate(self, predictions=None):
         """
-        Forecast future values using recursive prediction.
-        
-        Args:
-            n_steps: Number of steps to forecast
-            start_date: Start date for forecast (format: 'YYYY-MM-DD')
-        
-        Returns:
-            DataFrame with forecasted values
-        """
-        if self.model is None:
-            raise ValueError("Model must be trained before forecasting")
-        
-        # Get last window from full data (train_val + test)
-        full_data = pd.concat([self.train_val_data, self.test_data])
-        last_window_scaled = self.scaler_y.transform(
-            full_data[self.target_col].values[-self.seq_length:].reshape(-1, 1)
-        )
-        last_weekdays = full_data.index[-self.seq_length:].weekday.values / 6.0
-        
-        current_window = np.hstack([last_window_scaled, last_weekdays.reshape(-1, 1)])
-        
-        # Generate future dates and weekdays
-        future_dates = pd.date_range(start=start_date, periods=n_steps, freq='D')
-        future_weekdays = future_dates.weekday.values / 6.0
-        
-        predictions = []
-        for weekday in future_weekdays:
-            # Prepare input
-            X_input = torch.FloatTensor(current_window).unsqueeze(0).to(self.device)
-            
-            # Predict
-            with torch.no_grad():
-                pred_scaled = self.model(X_input).cpu().numpy()[0, 0]
-            
-            # Inverse transform
-            pred = self.scaler_y.inverse_transform([[pred_scaled]])[0, 0]
-            predictions.append(pred)
-            
-            # Update window
-            weekday_norm = weekday / 6.0
-            new_step = np.array([[pred_scaled, weekday_norm]])
-            current_window = np.vstack([current_window[1:], new_step])
-        
-        return pd.DataFrame({
-            'date': future_dates,
-            'predicted_cups_sold': predictions
-        })
-    
-    def evaluate(self, predictions = None):
-        """
-        Evaluate model performance on test set.
+        Evaluate model performance on test set (last 7 days only).
         
         Args:
             predictions: Pre-computed predictions (if None, will compute them)
@@ -405,6 +288,7 @@ class LSTMForecaster:
         if predictions is None:
             predictions = self.predict()
         
+        # Get actual values for the test period
         actual = self.scaler_y.inverse_transform(self.y_test).flatten()
         
         mae = mean_absolute_error(actual, predictions)
@@ -416,7 +300,12 @@ class LSTMForecaster:
                 np.abs((actual[non_zero_mask] - predictions[non_zero_mask]) / actual[non_zero_mask])
             ) * 100
         else:
-            mape = 0.0  # Or float('nan') if preferred; 0.0 assumes all zeros mean perfect relative match
+            mape = 0.0
+        
+        print(f"\nEvaluation on last {self.test_size} days:")
+        print(f"MAE: {mae:.2f}")
+        print(f"RMSE: {rmse:.2f}")
+        print(f"MAPE: {mape:.2f}%")
         
         return {
             'MAE': mae,
@@ -429,7 +318,6 @@ class LSTMForecaster:
         epochs: int = 100,
         batch_size: int = 32,
         learning_rate: float = 0.0005,
-        patience: int = 15,
         verbose: bool = True
     ):
         """
@@ -438,95 +326,115 @@ class LSTMForecaster:
         Returns:
             Tuple of (predictions, metrics dictionary)
         """
-        self.train(epochs, batch_size, learning_rate, patience, verbose=verbose)
+        self.train(epochs, batch_size, learning_rate, verbose=verbose)
         predictions = self.predict()
         metrics = self.evaluate(predictions)
         
         return predictions, metrics
 
-    def plot_diagnostics(self, save_path = None):
-        """Plot training and validation loss history."""
+    def plot_diagnostics(self, save_path=None):
+        """Plot training loss history."""
         if not self.train_losses:
             raise ValueError("Model must be trained before plotting diagnostics")
         
         plt.figure(figsize=(12, 6))
         plt.plot(self.train_losses, label='Train Loss', color='blue')
-        plt.plot(self.val_losses, label='Validation Loss', color='orange')
         plt.xlabel('Epoch')
         plt.ylabel('MSE Loss')
-        plt.title('Training and Validation Loss (LSTM)')
+        plt.title('Training Loss (LSTM)')
         plt.legend()
         plt.grid(True)
         
         if save_path:
+            save_path = Path(save_path)
+            save_path.parent.mkdir(parents=True, exist_ok=True)
             plt.savefig(save_path)
             print(f"Diagnostics plot saved to {save_path}")
         
         plt.show()
 
-    def plot_actual_vs_predicted(self, predictions = None, save_path = None):
-        """Plot actual vs predicted values on the test set."""
+    def plot_actual_vs_predicted(self, predictions=None, save_path=None):
+        """Plot actual vs predicted values on the test set (last 7 days)."""
         if predictions is None:
             predictions = self.predict()
+        
+        # Get actual values for the test period
+        actual = self.scaler_y.inverse_transform(self.y_test).flatten()
         test_dates = self.test_data.index
-        actual = self.test_data[self.target_col].values
-
-        pd.DataFrame({
+        
+        # Create DataFrame for logging
+        result_df = pd.DataFrame({
             'Date': test_dates,
             'Actual': actual,
             'Predicted': predictions
-        }).to_csv("../log/weather_lstm_actual_vs_predicted.csv")
+        })
         
+        # Save to CSV
+        output_path = Path(__file__).parent / 'log' / 'weather_lstm_actual_vs_predicted.csv'
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        result_df.to_csv(output_path, index=False)
+        print(f"Results saved to {output_path}")
+        
+        # Plot
         plt.figure(figsize=(12, 6))
-        plt.plot(test_dates, actual, label='Actual', color='blue')
-        plt.plot(test_dates, predictions, label='Predicted', color='orange')
+        plt.plot(test_dates, actual, label='Actual', marker='o', color='blue', linewidth=2)
+        plt.plot(test_dates, predictions, label='Predicted', marker='s', color='orange', linestyle='--', linewidth=2)
         plt.xlabel('Date')
         plt.ylabel('Cups Sold')
-        plt.title('Actual vs Predicted Cups Sold (LSTM)')
+        plt.title(f'Actual vs Predicted Cups Sold (LSTM) - Last {self.test_size} Days')
         plt.legend()
         plt.grid(True)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        
+        # Add value labels
+        for i, (date, actual_val, pred_val) in enumerate(zip(test_dates, actual, predictions)):
+            plt.annotate(f'{actual_val:.0f}', (date, actual_val), textcoords="offset points", xytext=(0,10), ha='center')
+            plt.annotate(f'{pred_val:.0f}', (date, pred_val), textcoords="offset points", xytext=(0,-15), ha='center', color='orange')
         
         if save_path:
-            plt.savefig(save_path)
+            save_path = Path(save_path)
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
             print(f"Actual vs Predicted plot saved to {save_path}")
         
         plt.show()
-
-    def plot_future_forecast(self, n_steps = 30, start_date = None, save_path = None):
-        """Plot future forecast starting from the end of the test data or a specified date."""
-        if start_date is None:
-            start_date = str(self.test_data.index[-1] + pd.Timedelta(days=1))
-        forecast_df = self.forecast_future(n_steps, start_date)
-        plt.figure(figsize=(12, 6))
-        plt.plot(forecast_df['date'], forecast_df['predicted_cups_sold'], label='Forecast', color='green')
-        plt.xlabel('Date')
-        plt.ylabel('Predicted Cups Sold')
-        plt.title('Future Forecast (LSTM)')
-        plt.grid(True)
         
-        if save_path:
-            plt.savefig(save_path)
-            print(f"Future Forecast plot saved to {save_path}")
-        
-        plt.show()
+        # Print individual predictions
+        print("\nDaily Predictions (Last 7 Days):")
+        print("=" * 50)
+        for i, (date, actual_val, pred_val) in enumerate(zip(test_dates, actual, predictions)):
+            error = actual_val - pred_val
+            error_percent = (error / actual_val * 100) if actual_val != 0 else 0
+            print(f"{date.date()}:")
+            print(f"  Actual: {actual_val:.1f}")
+            print(f"  Predicted: {pred_val:.1f}")
+            print(f"  Error: {error:+.1f} ({error_percent:+.1f}%)")
+            print("-" * 30)
 
 # Instantiate and run
 model = LSTMForecaster(
-    train_path=Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'weather' / 'train.csv',
-    val_path=Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'weather' / 'validation.csv',
-    test_path=Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'weather' / 'test.csv'
+    data_path=Path(__file__).parent.parent.parent / 'data' / 'intermediate' / 'merged_daily_weather_all.csv',
+    test_size=7  # Evaluate on last 7 days only
 )
 
-# Train the model (equivalent to optimize + train in SARIMAX)
-model.train(epochs=100, batch_size=16, learning_rate=0.0005, patience=10, verbose=True)
+# Train the model (no validation, no early stopping)
+print("Training LSTM model on all data except last 7 days...")
+model.train(epochs=100, batch_size=16, learning_rate=0.0005, verbose=True)
 
-# Plot diagnostics after fitting
-model.plot_diagnostics(save_path=Path(__file__).parent.parent.parent / 'figures' / 'weather_forecast_plots' / 'lstm_diagnostics_plot.png')
-
+# Make predictions on last 7 days
+print("\nMaking predictions on last 7 days...")
 predictions = model.predict()
 
+# Evaluate on last 7 days
+print("\nEvaluating model performance...")
 metrics = model.evaluate(predictions)
-print(metrics)
+
+# Plot diagnostics
+print("\nGenerating plots...")
+model.plot_diagnostics(
+    save_path=Path(__file__).parent.parent.parent / 'figures' / 'weather_forecast_plots' / 'lstm_diagnostics_plot.png'
+)
 
 # Plot actual vs predicted
 model.plot_actual_vs_predicted(
@@ -534,16 +442,16 @@ model.plot_actual_vs_predicted(
     save_path=Path(__file__).parent.parent.parent / 'figures' / 'weather_forecast_plots' / 'lstm_actual_vs_predicted.png'
 )
 
-# Future forecast example (no exogenous variables needed for LSTM, uses recursive with weekdays)
-future_preds = model.forecast_future(
-    n_steps=7,
-    start_date='2025-02-08'
-)
-print(future_preds)
-
-# Plot future forecast
-model.plot_future_forecast(
-    n_steps=5,
-    start_date='2025-02-08',
-    save_path=Path(__file__).parent.parent.parent / 'figures' / 'weather_forecast_plots' / 'lstm_future_forecast.png'
-)
+# Print final summary
+print("\n" + "=" * 60)
+print("FINAL RESULTS SUMMARY")
+print("=" * 60)
+print(f"Training: {len(model.train_data)} days")
+print(f"Testing: {len(model.test_data)} days")
+print("\nMetrics on last 7 days:")
+for metric_name, metric_value in metrics.items():
+    if metric_name == 'MAPE':
+        print(f"{metric_name}: {metric_value:.2f}%")
+    else:
+        print(f"{metric_name}: {metric_value:.2f}")
+print("=" * 60)

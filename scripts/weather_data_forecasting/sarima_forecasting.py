@@ -23,9 +23,7 @@ class SARIMAForecaster:
     SARIMA (Seasonal AutoRegressive Integrated Moving Average) forecaster for time series prediction.
     
     Attributes:
-        train_path: Path to training data CSV file
-        val_path: Path to validation data CSV file
-        test_path: Path to test data CSV file
+        data_path: Path to the full dataset CSV file
         best_order: Optimal (p, d, q) parameters
         best_s_order: Optimal seasonal (P, D, Q, s) parameters
         model: Fitted SARIMAX model
@@ -33,30 +31,25 @@ class SARIMAForecaster:
     
     def __init__(
         self, 
-        train_path, 
-        val_path, 
-        test_path,
-        target_col = 'cups_sold'
+        data_path,
+        target_col = 'cups_sold',
+        test_size = 7  # Last 7 days for testing
     ):
         """
         Initialize the SARIMA forecaster.
         
         Args:
-            train_path: Path to training CSV file
-            val_path: Path to validation CSV file
-            test_path: Path to test CSV file
+            data_path: Path to the full dataset CSV file
             target_col: Name of the target column to forecast
+            test_size: Number of last days to use for testing
         """
-        self.train_path: Path = Path(train_path)
-        self.val_path: Path = Path(val_path)
-        self.test_path: Path = Path(test_path)
+        self.data_path: Path = Path(data_path)
         self.target_col: str = target_col
+        self.test_size = test_size
         
+        self.full_data = None
         self.train_data = None
-        self.val_data = None
         self.test_data = None
-        self.train_val = None
-        self.full = None
         self.target = None
         
         self.best_order = None
@@ -64,29 +57,35 @@ class SARIMAForecaster:
         self.model = None
         self.res = None
         
-        self.load_data()
+        self.load_and_split_data()
 
-    def load_data(self):
-        """Load and preprocess training, validation, and test data."""
-        self.train_data = pd.read_csv(self.train_path)
-        self.val_data = pd.read_csv(self.val_path)
-        self.test_data = pd.read_csv(self.test_path)
+    def load_and_split_data(self):
+        """Load the full dataset and split into train/test."""
+        self.full_data = pd.read_csv(self.data_path)
         
-        # Parse date column and set as index
-        for df in [self.train_data, self.val_data, self.test_data]:
-            df['date'] = pd.to_datetime(df['date'])
-            df.set_index('date', inplace=True)
-            df = df.asfreq('D')  # Explicitly set daily frequency to avoid warnings
-            df = df.ffill()  # Handle any NaNs if gaps exist
+        # Parse dates and sort by date
+        self.full_data['date'] = pd.to_datetime(self.full_data['date'])
+        self.full_data = self.full_data.sort_values('date').reset_index(drop=True)
         
-        # Combine train and validation for model training
-        self.train_val = pd.concat([self.train_data, self.val_data]).sort_index()
+        # Split data: all except last 7 days for training, last 7 days for testing
+        train_size = len(self.full_data) - self.test_size
         
-        # Combine all data for sequential prediction
-        self.full = pd.concat([self.train_val, self.test_data]).sort_index()
+        # Train data (all except last 7 days)
+        self.train_data = self.full_data.iloc[:train_size].copy()
+        self.train_data.set_index('date', inplace=True)
+        self.train_data = self.train_data.asfreq('D').ffill()  # Set daily frequency and forward fill
         
-        # Set target series
-        self.target = self.train_val[self.target_col]
+        # Test data (last 7 days)
+        self.test_data = self.full_data.iloc[train_size:].copy()
+        self.test_data.set_index('date', inplace=True)
+        self.test_data = self.test_data.asfreq('D').ffill()
+        
+        # Set target series for training
+        self.target = self.train_data[self.target_col]
+        
+        print(f"Dataset loaded: {len(self.full_data)} total rows")
+        print(f"Train data: {len(self.train_data)} rows (all except last {self.test_size} days)")
+        print(f"Test data: {len(self.test_data)} rows (last {self.test_size} days)")
 
     def optimize(
         self,
@@ -149,7 +148,7 @@ class SARIMAForecaster:
     def fit(self):
         """Fit the SARIMA model with optimized parameters."""
         if self.best_order is None or self.best_s_order is None:
-            self.optimize()
+            self.optimize(verbose=False)
         
         if self.best_order and self.best_s_order:
             self.model = SARIMAX(
@@ -159,11 +158,11 @@ class SARIMAForecaster:
                 simple_differencing=False
             )
             self.res = self.model.fit(disp=False, maxiter=500)
+            print(f"Model fitted on {len(self.train_data)} days of data")
 
     def predict(self):
         """
-        Generate predictions for test set using in-sample prediction.
-        Uses single model fit (fast, like original script).
+        Generate predictions for test set (last 7 days).
         
         Returns:
             List of predictions for test period
@@ -174,20 +173,14 @@ class SARIMAForecaster:
         if self.res is None:
             self.fit()
         
-        train_len = len(self.train_val)
-        horizon = len(self.test_data)
-        
-        # In-sample prediction (like original script)
-        predictions = self.res.get_prediction(
-            start=train_len,
-            end=train_len + horizon - 1
-        )
+        # In-sample prediction for the last 7 days
+        predictions = self.res.get_forecast(steps=self.test_size)
         
         return predictions.predicted_mean.values
 
     def evaluate(self, predictions = None):
         """
-        Evaluate model performance on test set.
+        Evaluate model performance on test set (last 7 days).
         
         Args:
             predictions: Pre-computed predictions (if None, will compute them)
@@ -212,6 +205,11 @@ class SARIMAForecaster:
             ) * 100
         else:
             mape = 0.0  # If all actual values are zero, set MAPE to 0 (or nan if preferred)
+        
+        print(f"Evaluation on last {self.test_size} days:")
+        print(f"  MAE: {mae:.2f}")
+        print(f"  RMSE: {rmse:.2f}")
+        print(f"  MAPE: {mape:.2f}%")
         
         return {
             'MAE': mae,
@@ -276,7 +274,7 @@ class SARIMAForecaster:
         plt.show()
 
     def plot_actual_vs_predicted(self, predictions = None, save_path = None):
-        """Plot actual vs predicted values on the test set."""
+        """Plot actual vs predicted values on the test set (last 7 days)."""
         if predictions is None:
             predictions = self.predict()
         test_dates = self.test_data.index
@@ -287,19 +285,27 @@ class SARIMAForecaster:
             'Actual': actual.values,
             'Predicted': predictions
         })
-        result_df.to_csv("../log/weather_sarima_actual_vs_predicted.csv")
+        result_df.to_csv("../log/weather_sarima_actual_vs_predicted.csv", index=False)
+        print("Predictions saved to ../log/weather_sarima_actual_vs_predicted.csv")
         
         plt.figure(figsize=(12, 6))
-        plt.plot(test_dates, actual, label='Actual', color='blue')
-        plt.plot(test_dates, predictions, label='Predicted', color='orange')
+        plt.plot(test_dates, actual, label='Actual', color='blue', marker='o')
+        plt.plot(test_dates, predictions, label='Predicted', color='orange', marker='s')
         plt.xlabel('Date')
         plt.ylabel('Cups Sold')
-        plt.title('Actual vs Predicted Cups Sold (SARIMA)')
+        plt.title(f'Actual vs Predicted Cups Sold (SARIMA) - Last {self.test_size} Days')
         plt.legend()
         plt.grid(True)
+        
+        # Add value labels for the last 7 days
+        for i, (date, act, pred) in enumerate(zip(test_dates, actual.values, predictions)):
+            plt.text(date, act, f'{act:.0f}', ha='center', va='bottom')
+            plt.text(date, pred, f'{pred:.0f}', ha='center', va='top')
+        
         if save_path:
             plt.savefig(save_path)
             print(f"Actual vs Predicted plot saved to {save_path}")
+        
         plt.show()
 
     def plot_future_forecast(self, n_steps = 30, start_date = None, save_path = None):
@@ -308,21 +314,27 @@ class SARIMAForecaster:
             start_date = str(self.test_data.index[-1] + pd.Timedelta(days=1))
         forecast_df = self.forecast_future(n_steps, start_date)
         plt.figure(figsize=(12, 6))
-        plt.plot(forecast_df['date'], forecast_df['predicted_cups_sold'], label='Forecast', color='green')
+        plt.plot(forecast_df['date'], forecast_df['predicted_cups_sold'], label='Forecast', color='green', marker='o')
         plt.xlabel('Date')
         plt.ylabel('Predicted Cups Sold')
-        plt.title('Future Forecast (SARIMA)')
+        plt.title(f'Future {n_steps}-Day Forecast (SARIMA)')
         plt.grid(True)
+        
+        # Add value labels
+        for _, row in forecast_df.iterrows():
+            plt.text(row['date'], row['predicted_cups_sold'], f'{row["predicted_cups_sold"]:.0f}', ha='center', va='bottom')
+        
         if save_path:
             plt.savefig(save_path)
             print(f"Future Forecast plot saved to {save_path}")
+        
         plt.show()
 
 # Instantiate and run
 model = SARIMAForecaster(
-    train_path=Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'weather' / 'train.csv',
-    val_path=Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'weather' / 'validation.csv',
-    test_path=Path(__file__).parent.parent.parent / 'data' / 'preprocessed' / 'weather' / 'test.csv'
+    data_path=Path(__file__).parent.parent.parent / 'data' / 'intermediate' / 'merged_daily_weather_all.csv',
+    target_col='cups_sold',
+    test_size=7
 )
 
 # Optimize with smaller ranges if needed
@@ -335,25 +347,31 @@ model.plot_diagnostics(save_path=Path(__file__).parent.parent.parent / 'figures'
 
 predictions = model.predict()
 
+# Evaluate on the last 7 days
 metrics = model.evaluate(predictions)
-print(metrics)
+print("\nFinal Metrics:", metrics)
 
-# Plot actual vs predicted
+# Plot actual vs predicted for the last 7 days
 model.plot_actual_vs_predicted(
     predictions,
     save_path=Path(__file__).parent.parent.parent / 'figures' / 'weather_forecast_plots' / 'sarima_actual_vs_predicted.png'
 )
 
-# Future forecast example (no exogenous variables for SARIMA)
+# Future forecast example
 future_preds = model.forecast_future(
-    n_steps=8,
-    start_date='2025-02-08'
+    n_steps=5,
+    start_date=str(model.test_data.index[-1] + pd.Timedelta(days=1))  # Start from day after last test date
 )
+print("\nFuture Forecast:")
 print(future_preds)
 
 # Plot future forecast
 model.plot_future_forecast(
     n_steps=5,
-    start_date='2025-02-08',
+    start_date=str(model.test_data.index[-1] + pd.Timedelta(days=1)),
     save_path=Path(__file__).parent.parent.parent / 'figures' / 'weather_forecast_plots' / 'sarima_future_forecast.png'
 )
+
+# Optional: Show train/test split info
+print(f"\nTrain dates: {model.train_data.index[0]} to {model.train_data.index[-1]}")
+print(f"Test dates: {model.test_data.index[0]} to {model.test_data.index[-1]}")
