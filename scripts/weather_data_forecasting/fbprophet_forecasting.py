@@ -331,16 +331,18 @@ class ProphetForecaster:
 
 # Instantiate and run
 model = ProphetForecaster(
-    data_path=Path(__file__).parent.parent.parent / 'data' / 'intermediate' / 'merged_daily_weather_all.csv',  # Update to your single dataset
+    data_path=Path(__file__).parent.parent.parent / 'data' / 'intermediate' / 'merged_daily_weather_all.csv',
     target_col='cups_sold',
-    test_size=7
+    test_size=7,
+    yearly_seasonality=5,
+    weekly_seasonality=3
 )
 
 # Train the model
 model.train(
     growth='linear',
-    changepoint_prior_scale=0.05,
-    seasonality_prior_scale=10.0,
+    changepoint_prior_scale=0.001,
+    seasonality_prior_scale=1.0,
     verbose=True
 )
 

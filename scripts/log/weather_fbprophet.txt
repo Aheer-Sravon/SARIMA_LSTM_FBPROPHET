@@ -1,10 +1,25 @@
+Dataset loaded: 313 total rows
+Train data: 306 rows (all except last 7 days)
+Test data: 7 rows (last 7 days)
+Model trained on 306 days of data
 Diagnostics plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/weather_forecast_plots/prophet_diagnostics_plot.png
-{'MAE': 3.8252580800804394, 'RMSE': np.float64(5.20923352618979), 'MAPE': np.float64(65.33472829637745)}
+Evaluation on last 7 days:
+  MAE: 5.05
+  RMSE: 7.49
+  MAPE: 26.76%
+
+Final Metrics: {'MAE': 5.051599653371115, 'RMSE': np.float64(7.4884095688769445), 'MAPE': np.float64(26.755422338504957)}
+Predictions saved to ../log/weather_fbprophet_actual_vs_predicted.csv
 Actual vs Predicted plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/weather_forecast_plots/prophet_actual_vs_predicted.png
+
+Future Forecast:
         date  predicted_cups_sold  lower_bound  upper_bound
-0 2025-02-08             5.454190     0.695959    10.627430
-1 2025-02-09             5.468439     0.645446    10.288951
-2 2025-02-10             5.665012     0.739861    10.773572
-3 2025-02-11             6.817354     1.918605    11.924343
-4 2025-02-12             3.981952    -1.033675     9.371497
+0 2025-02-08            14.013088     8.854068    18.942603
+1 2025-02-09            14.397394     9.411185    19.416163
+2 2025-02-10            16.157718    10.666024    21.195507
+3 2025-02-11            18.235632    13.017809    22.977680
+4 2025-02-12            16.800133    11.829119    22.154622
 Future Forecast plot saved to /home/srabon/SARIMA_LSTM_FBPROPHET/figures/weather_forecast_plots/prophet_future_forecast.png
+
+Train dates: 2024-04-01 00:00:00 to 2025-01-31 00:00:00
+Test dates: 2025-02-01 00:00:00 to 2025-02-07 00:00:00
