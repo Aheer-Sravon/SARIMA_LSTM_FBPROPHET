@@ -615,13 +615,13 @@ for store in stores:
     
     # Split the data chronologically - LAST 50 points for testing
     n = len(df_store)
-    test_size = 50  # Fixed 50 test points
+    test_size = 7  # Fixed 50 test points
     train_size = n - test_size
 
     train = df_store.iloc[:train_size]
     test = df_store.iloc[train_size:]
 
-# Save splits to CSV files for the store (NO VALIDATION)
+    # Save splits to CSV files for the store (NO VALIDATION)
     train_path = base_data_path / f'train_{store}.csv'
     test_path = base_data_path / f'test_{store}.csv'
 

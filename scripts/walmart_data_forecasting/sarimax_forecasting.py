@@ -406,7 +406,7 @@ for store in stores:
     
     # Split the data chronologically - LAST 50 points for testing
     n = len(df_store)
-    test_size = 50  # Fixed 50 test points
+    test_size = 7  # Fixed 50 test points
     train_size = n - test_size
 
     train = df_store.iloc[:train_size]
@@ -431,12 +431,12 @@ for store in stores:
     # Optimize with smaller ranges if needed
     model.optimize(
         p_range=range(0, 4),
-        q_range=range(0, 4),
-        P_range=range(0, 2),
+        q_range=range(0, 3),
+        P_range=range(0, 3),
         Q_range=range(0, 2),
         d=1,
         D=0,
-        s=7,
+        s=2,
         verbose=True
     )
     

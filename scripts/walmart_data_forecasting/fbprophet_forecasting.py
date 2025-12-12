@@ -335,7 +335,7 @@ for store in stores:
     
     # Split the data chronologically - LAST 50 points for testing
     n = len(df_store)
-    test_size = 50  # Fixed 50 test points
+    test_size = 7  # Fixed 50 test points
     train_size = n - test_size
 
     train = df_store.iloc[:train_size]
