@@ -434,7 +434,7 @@ for store in stores:
         q_range=range(0, 3),
         P_range=range(0, 3),
         Q_range=range(0, 2),
-        d=1,
+        d=0,
         D=0,
         s=2,
         verbose=True
